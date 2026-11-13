@@ -176,6 +176,7 @@
   <div id="bBtns"></div>
 </div></div>
 <div id="awaken" class="modal"></div>
+<div id="gmenu" class="modal"><div class="bx" id="menuBox" style="width:min(760px,96vw)"></div></div>
 <div id="spellbook" class="modal"><div class="bx" id="bookBox" style="width:min(560px,95vw)"></div></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
@@ -461,7 +462,7 @@
     burning: 'Someone is trapped in the flames! Water could put it out',
     blaze: 'Wildfire! Water would put it out',
     ice: 'A solid block of ice. Fire would melt it: a Fireball, or a campfire made with wood',
-    vault: 'A locked vault. You need an old key',
+    vault: 'A locked vault. You need an old key, dropped by powerful monsters: elites, guardians, bosses, trolls, golems, demons and dragons',
     cave: 'Pitch black inside. A torch would light the way (craft: wood + flint)',
     boulder: 'A huge boulder. A pickaxe could smash it (craft: wood + 2 iron ore, needs the Artisan skill)',
     cliff: 'A sheer cliff. A ladder would reach the top (craft: 2 wood + rope, needs Artisan skill rank 1)',
@@ -520,7 +521,7 @@
     d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
-    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
     return d;
@@ -559,7 +560,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 23;
+  const BUILD = 24;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -596,7 +597,7 @@
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
-    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
+    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
@@ -661,7 +662,7 @@
     if (d >= 15) w.push(['trap', 2 + Math.min(4, d / 50)]);
     if (d >= 16) w.push(['boulder', 1.5]);
     if (d >= 18) w.push(['ice', 1.6], ['lake', 1.4]);
-    if (d >= 20) w.push(['merchant', 1.2], ['vault', 1]);
+    if (d >= 20) w.push(['merchant', .5], ['vault', 1]);
     if (d >= 25) w.push(['crystal', 1.3]);
     if (d >= 40) w.push(['cdoor', .8]);
     return wpick(w);
@@ -683,6 +684,7 @@
     if (!S.boss && d >= S.nextBoss) type = 'lair';
     else if (S.boss && !S.boss.open && S.boss.forced.length && d >= S.boss.nextForce) { type = S.boss.forced.shift(); S.boss.nextForce = d + 2 + ri(0, 1); }
     else if (shrineDue(d)) { type = 'shrine'; S.nextShrine = 1e9; S.lastShrine = d; }
+    else if (d >= S.nextShop && d - S.lastShrine >= 3) { type = 'merchant'; S.nextShop = d + ri(45, 70); }
     else if (d === 2 && !P.eq.weapon) { type = 'gear'; t.loot.push(makeGear(0, 0, 'weapon')); }
     else if (d === 8 && !Object.keys(P.spells).length) type = 'rune';
     else if (!S.caveSeen && d >= S.firstCave) type = 'cave';
@@ -698,7 +700,7 @@
       case 'gear': if (!t.loot.length) t.loot.push(makeGear(d)); break;
       case 'monster': if (d > 10 && rnd() < 0.28) { t.type = 'chest'; t.safe = true; } placeMon(makeMonster(d), q, r); break;
       case 'burning': t.type = type; t.burnUntil = gt + 150; addDue(['river']); break;
-      case 'vault': t.type = type; S.keyDue = true; break;
+      case 'vault': t.type = type; if (!S.keyDue) S.vaultAt = S.revealed; S.keyDue = true; break;
       case 'lair': t.type = 'lair'; setupBoss(t, d); break;
       case 'brazier': t.type = 'brazier'; break;
       case 'sigil': { t.type = 'sigil'; const w = makeMonster(d, { lv: 1 }); w.name = 'Warden ' + w.base.n; w.warden = true; w.roam = false; w.elite = false; placeMon(w, q, r); } break;
@@ -715,7 +717,10 @@
         { it: { kind: 'item', id: 'hpot' }, price: 12 + Math.floor(d / 10) },
         { it: { kind: 'item', id: pick(['mpot', 'bomb', 'cooked', 'torch', 'rope']) }, price: 10 + Math.floor(d / 12) },
         ...(rnd() < .4 ? [{ it: { kind: 'item', id: 'pack' }, price: 70 + Math.floor(d / 2) }] : []),
-        (() => { const g = makeGear(d, 1); return { it: g, price: 25 + g.tier * 18 }; })()]; break;
+        (() => { const g = makeGear(d, 1); return { it: g, price: 25 + g.tier * 18 }; })(),
+        ...(rnd() < .55 ? [{ special: 'tome', price: 90 + Math.floor(d * 1.2) }] : []),
+        ...(rnd() < .5 ? [{ special: 'scroll', price: 55 + Math.floor(d / 2) }] : []),
+        ...(rnd() < .35 ? [{ it: { kind: 'item', id: 'bridge' }, price: 20 + Math.floor(d / 8) }] : [])]; break;
       default: t.type = type;
     }
     return t;
@@ -914,7 +919,8 @@
     else { const k = pick(Object.keys(P.spells)); P.spells[k]++; toast(SPELLS[k].name + ' grows stronger (Lv ' + P.spells[k] + ')'); }
     hudDirty = true;
   }
-  function maybeKey(t) { if (S.keyDue && rnd() < .6) { S.keyDue = false; t.loot.push({ kind: 'item', id: 'key' }); } }
+  // chests only give up the old key as a fallback, once a vault has waited a long while
+  function maybeKey(t) { if (S.keyDue && S.revealed - (S.vaultAt || 0) >= 70 && rnd() < .6) { S.keyDue = false; t.loot.push({ kind: 'item', id: 'key' }); } }
   function openChest(t) {
     t.type = 'opened'; stats.chests++;
     const d = curD(), g = ri(4, 10) + Math.floor(d / 6); P.gold += gm(g); stats.gold += g;
@@ -1025,6 +1031,9 @@
       gather('Draw water', 'magic, or douse fire', 'water', () => {});
     }
     if (t.type === 'merchant') t.stock.forEach((s) => {
+      if (s.special) { const tome = s.special === 'tome';
+        A.push({ label: tome ? 'Buy Tome of Insight' : 'Buy Spell Scroll', sub: s.price + ' gold · ' + (tome ? '+1 skill point' : 'learn a new spell, or strengthen one'), buy: true, off: P.gold < s.price && 'Need ' + s.price + ' gold',
+          run() { P.gold -= s.price; t.stock.splice(t.stock.indexOf(s), 1); if (tome) { P.sp++; toast('You study the tome: +1 skill point (press K)'); } else learnSpell(); hudDirty = true; } }); return; }
       const it = s.it, nm = it.kind === 'gear' ? it.name : ITEMS[it.id].name;
       A.push({ label: 'Buy ' + nm, sub: s.price + ' gold' + (it.kind === 'gear' ? ' · ' + gearDesc(it) : ''), buy: true,
         off: (P.gold < s.price && 'Need ' + s.price + ' gold') || (it.kind === 'item' && full(isize(it.id))),
@@ -1443,7 +1452,7 @@
     if (m.elite || rnd() < .1) t.loot.push(makeGear(d, m.elite ? 1 : 0));
     if (m.elite && rnd() < .5) t.loot.push({ kind: 'item', id: 'crystal' });
     if ((m.base.s === 'beast' || m.base.s === 'bear') && rnd() < .45) t.loot.push({ kind: 'item', id: 'hide' });
-    if (S.keyDue && rnd() < .35) { S.keyDue = false; t.loot.push({ kind: 'item', id: 'key' }); blog('It dropped an old key!'); }
+    if (S.keyDue && rnd() < (m.boss || m.guardian ? 1 : m.base.d >= 90 ? .6 : m.elite ? .45 : 0)) { S.keyDue = false; t.loot.push({ kind: 'item', id: 'key' }); blog('A powerful foe like this guarded an old key!'); }
     if (m.mist && S.boss && !S.boss.open) { const b = S.boss, o = b.offer || {}, pool = b.gate === 'braziers' ? ['wood', 'flint'] : b.gate === 'wardens' ? ['hpot', 'meat'] : Object.keys(o).map(k => ({ cooked: 'fish', torch: pick(['wood', 'flint']), bomb: pick(['flint', 'iron', 'stone']), rope: 'vine' })[k] || k);
       t.loot.push({ kind: 'item', id: pick(pool) }); if (rnd() < .5) t.loot.push({ kind: 'item', id: pick(pool) }); blog('The mist creature leaves something behind.'); }
     if (m.warden && S.boss && t.type === 'sigil' && !t.lit) { t.lit = true; S.boss.have++; blog('The sigil stone awakens! (' + S.boss.have + '/3)'); if (S.boss.have >= 3) later(openLair, 900); }
@@ -2561,7 +2570,7 @@
   const view = () => ({ ox: W / 2 - (cam.x + pan.x), oy: H / 2 - (cam.y + pan.y) });
   const cellAtMouse = () => { const { ox, oy } = view(); return fromWorld(mouse.x - ox, mouse.y - oy); };
   const TIPS = { grass: 'Grass', tree: 'Tree: chop for wood', bush: 'Berry bush', river: 'River: water and fish', stone: 'Stone', chest: 'Treasure chest!', opened: 'Opened chest',
-    rune: 'Rune stone: magic', mystery: '??? Step on it to find out', merchant: 'Merchant: spend your gold', shrine: 'Shrine: checkpoint + your stash (monsters cannot attack you here)', trap: 'Grass',
+    rune: 'Rune stone: magic', mystery: '??? Step on it to find out', merchant: 'Shop: spend your gold', shrine: 'Shrine: checkpoint + your stash (monsters cannot attack you here)', trap: 'Grass',
     wall: 'Rock wall: a bomb could open it', bear: 'Hungry bear: do not fight it. Give it a fish', bearfriend: 'A happy, full bear. Feed it again and it might join you',
     chasm: 'Chasm: bridge it with 2 wood', bridge: 'Bridge', burning: 'Fire! Someone is trapped. Douse it with water', blaze: 'Wildfire: douse with water',
     ice: 'Ice block: melt with Fireball or a campfire (wood)', vault: 'Locked vault: needs an old key', vines: 'Vines: cut for rope making', ore: 'Iron ore vein', flint: 'Flint outcrop',
@@ -2600,7 +2609,7 @@
     if (shoot) { shoot.t += dt; for (let i = 0; i < 10; i++) { ctx.globalAlpha = (1 - i / 10) * (1 - shoot.t / .7); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(shoot.x + shoot.t * 240 - i * 3), Math.round(shoot.y + shoot.t * 90 - i * 1.1), 1, 1); } ctx.globalAlpha = 1; if (shoot.t > .7) shoot = null; }
 
     let hoverT = null, hoverC = null;
-    const busy = B || stashOpen || craftOpen || skillsOpen || bookOpen || hallOpen;
+    const busy = B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || hallOpen;
     if (sel && (S.state !== 'play' || busy || !(tiles.has(key(sel.q, sel.r)) || isCand(sel.q, sel.r)))) sel = null;
     const hcell = sel || (mouse.x > -900 ? cellAtMouse() : null);
     if (S.state === 'play' && !busy && hcell) { const c = hcell, k = key(c.q, c.r); if (tiles.has(k)) hoverT = tiles.get(k); else if (isCand(c.q, c.r)) hoverC = c; }
@@ -2825,7 +2834,7 @@
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
     else st += '<div class="call dim">Next boss around tile ' + S.nextBoss + '</div>';
     if (P.sp) st += '<div class="call" style="border-color:#ffd23a"><b style="color:#ffe14a">' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend!</b> Press K</div>';
-    st += '<button class="hallbtn" id="hallBtn">&#127942; Hall of Greats</button>';
+    st += '<button class="hallbtn" id="hallBtn">&#127942; Hall of Greats</button><button class="hallbtn" id="menuBtn" style="margin-top:4px;border-color:#5ab0ff;color:#bfe0ff">&#9776; Menu &amp; guide</button>';
     $('stat').innerHTML = st;
     $('skillBtn').classList.toggle('glow', P.sp > 0);
     let g = '<h4 id="gearT">GEAR<span>ATK ' + pAtk() + ' · DEF ' + pDef() + '</span></h4><div class="body"><div class="ggrid">';
@@ -2864,7 +2873,7 @@
     $('actions').onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
-    $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); };
+    $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); else if (e.target.closest('#menuBtn')) openMenu(); };
     $('skillBtn').onclick = () => { if (B || S.state !== 'play') return; openSkills(); };
     $('bookBtn').onclick = () => { if (B || S.state !== 'play') return; openBook(); };
     $('spells').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) selectSpell(b.dataset.k); };
@@ -2917,6 +2926,57 @@
     const s = t.closest('[data-s]'); if (s) return stashToBag(+s.dataset.s);
   };
 
+  // ---------- menu: guide and export ----------
+  let menuOpen = false, menuTab = 'guide';
+  function runSummary() {
+    const types = {}; for (const t of tiles.values()) types[t.type] = (types[t.type] || 0) + 1;
+    return { game: 'Hex Adventure', build: BUILD, exportedAt: new Date().toISOString(), device: { ua: navigator.userAgent, screen: innerWidth + 'x' + innerHeight, dpr: window.devicePixelRatio, zoom: scale },
+      run: { tilesRevealed: S.revealed, deaths: S.deaths, gems: S.gems, minutes: Math.round((Date.now() - S.t0) / 6000) / 10, inCave: !!S.cave, position: { q: guy.q, r: guy.r }, nextBossAt: S.nextBoss, bossesSlain: S.bossN, lastShrineAt: S.lastShrine, nextShopAt: S.nextShop, stashCap: S.stashCap, stashItems: S.stash.length },
+      player: { level: P.lvl, xp: P.xp, hp: P.hp, maxHp: maxHP(), mp: P.mp, maxMp: maxMP(), attack: pAtk(), defense: pDef(), gold: P.gold, skillPoints: P.sp, awakenings: P.awk || 0, skills: P.sk, lockedSkills: P.lock, spells: P.spells, spellLoadout: P.loadout, spellSlots: spellSlots(), bag: P.bag, bagCap: P.bagCap, equipment: P.eq },
+      stash: S.stash, stats, tileTypeCounts: types, monstersOnMap: mons.size };
+  }
+  const mapJson = (k, v) => v instanceof Map ? { __map: [...v.entries()] } : v;
+  const exportText = () => JSON.stringify(runSummary(), null, 1);
+  const exportFull = () => JSON.stringify(snapshot(), mapJson);
+  function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+  function openMenu(tab) { if (TEST || B || S.state !== 'play') return; menuOpen = true; if (tab) menuTab = tab; $('gmenu').style.display = 'flex'; renderMenu(); }
+  function closeMenu() { menuOpen = false; $('gmenu').style.display = 'none'; hudDirty = true; }
+  function guideHTML() {
+    const li = (a) => '<ul style="margin:4px 0 10px 18px;padding:0;line-height:1.5">' + a.map(x => '<li>' + x + '</li>').join('') + '</ul>', hd = (t) => '<h3 style="margin:10px 0 2px;color:#7dff8f;font-size:15px">' + t + '</h3>';
+    return hd('The goal') + li(['Explore a floating world, one hex at a time. Every tile you reveal is new, and the further you go the tougher it gets.', 'Your score is <b>space gems</b> (found in caves and dropped by guardians and bosses). The Hall of Greats ranks runs by tiles, then level, then gold.', 'You have <b>5 skulls</b>. Each death costs one and sends you back to your last shrine. The fifth ends the run.']) +
+      hd('Controls') + li(['<b>Click a glowing outline</b> to reveal a tile. <b>Click a tile</b> to walk there. On a phone, tap once to select, tap again to go.', 'Drag to look around. Pinch, mouse wheel or + / - to zoom. 0 resets.', '<b>Right-click</b> (or long-press) gear on the ground, or an Equip button, to compare it with what you wear. Use the arrows to flip through several items.', 'Keys: <b>C</b> crafting, <b>K</b> skills, <b>1-6</b> spells, <b>Esc</b> cancels or closes.']) +
+      hd('Shrines') + li(['Shrines are checkpoints. Monsters cannot attack you on one. Rest to heal fully, open your stash (it is safe when you die), and swap your carried spells in the Spellbook.', 'They appear more often when you are hurt or your bag is full, and always after a long stretch.']) +
+      hd('Growing stronger') + li(['You gain a skill point every level and 2 from each boss. Higher ranks of a skill cost more points. Master every skill for an <b>Awakening</b>: your bonuses lock in, the tree resets, and levels need 1.5x more XP.', 'You can learn many spells but carry only 3 (up to 6 with Arcane Focus).', 'Gear drops from chests, monsters and shops. Compare before you equip, and reinforce armor with iron.']) +
+      hd('Crafting') + li(['Press C. Rope, torch, bridge, bomb and health potion are always open. Pickaxe, ladder, raft, crystal key, pack upgrade and magic potion unlock with the <b>Artisan</b> and <b>Alchemy</b> skills.', 'At a shrine, crafting also uses materials from your stash.']) +
+      hd('Shops and keys') + li(['A shop appears every so often. Spend gold on potions, gear, spell scrolls, tomes (+1 skill point) and more.', 'A locked vault needs an <b>old key</b>, which powerful monsters drop: elites, cave guardians, bosses, trolls, golems, demons and dragons.']) +
+      hd('Bosses and caves') + li(['Every so often a lair appears and a mist blocks the way until you open it (wardens, braziers or an offering) and defeat the boss.', 'Caves are dark: light a torch to go in. They hold gem veins and a guardian. Climb the rope to leave.']) +
+      hd('Things you will meet') + '<table style="width:100%;font-size:13px;border-collapse:collapse">' + Object.keys(HINT).map(k => '<tr><td style="padding:2px 6px 2px 0;color:#9fe8ff;white-space:nowrap;vertical-align:top;text-transform:capitalize">' + k + '</td><td style="padding:2px 0;border-bottom:1px solid #22332a">' + HINT[k] + '</td></tr>').join('') + '</table>' +
+      hd('Items') + '<table style="width:100%;font-size:13px;border-collapse:collapse">' + Object.keys(ITEMS).map(k => '<tr><td style="padding:2px 6px 2px 0;white-space:nowrap;vertical-align:top"><b>' + ITEMS[k].name + '</b></td><td style="padding:2px 0;border-bottom:1px solid #22332a">' + ITEMS[k].d + '</td></tr>').join('') + '</table>';
+  }
+  function renderMenu() {
+    if (TEST || !menuOpen) return;
+    const tabs = [['guide', 'How to play'], ['export', 'Export game info']];
+    let h = '<h2>MENU</h2><div style="display:flex;gap:6px;justify-content:center;margin-bottom:8px">' + tabs.map(([k, l]) => '<button class="act' + (menuTab === k ? ' hot' : '') + '" data-mt="' + k + '">' + l + '</button>').join('') + '</div>';
+    if (menuTab === 'guide') h += '<div style="text-align:left;font-size:14px">' + guideHTML() + '</div>';
+    else {
+      const txt = exportText();
+      h += '<div class="note" style="margin:0 0 8px">Share your run so it can be looked at: copy the summary or download the full save, and paste or attach it in your chat with Claude. It holds your build number, stats, gear, skills, spells and map totals, and nothing personal (no name or account).</div>' +
+        '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:8px"><button class="act" id="exCopy">Copy summary<small>paste it into a chat</small></button><button class="act alt" id="exDl">Download summary<small>.json file</small></button><button class="act buy" id="exFull">Download full save<small>includes the whole map</small></button></div>' +
+        '<textarea readonly id="exText" style="width:100%;height:240px;box-sizing:border-box;background:#06100a;color:#bfe8c8;border:1px solid #45624f;border-radius:6px;font:12px monospace;padding:6px">' + txt.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</textarea>';
+    }
+    h += '<div style="text-align:center;margin-top:8px"><button class="act" id="mnClose">Close</button></div>';
+    const keep = $('menuBox').scrollTop; $('menuBox').innerHTML = h; $('menuBox').scrollTop = keep;
+  }
+  if (!TEST) $('menuBox').onclick = (e) => {
+    const t = e.target;
+    if (t.closest('#mnClose')) return closeMenu();
+    const mt = t.closest('[data-mt]'); if (mt) { menuTab = mt.dataset.mt; $('menuBox').scrollTop = 0; return renderMenu(); }
+    const nm = 'hex-adventure-b' + BUILD + '-' + S.revealed + 'tiles';
+    if (t.closest('#exCopy')) { const txt = exportText(); const done = () => toast('Copied! Paste it into your chat'); const fb = () => { const ta = $('exText'); ta.select(); try { document.execCommand('copy'); done(); } catch (_) { toast('Select the text and copy it'); } };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fb); else fb(); return; }
+    if (t.closest('#exDl')) { download(nm + '-summary.json', exportText()); return toast('Summary downloaded'); }
+    if (t.closest('#exFull')) { download(nm + '-save.json', exportFull()); return toast('Full save downloaded'); }
+  };
   // ---------- spellbook ----------
   let bookOpen = false;
   function openBook() { if (TEST || B || S.state !== 'play') return; bookOpen = true; $('spellbook').style.display = 'flex'; renderBook(); }
@@ -3075,7 +3135,7 @@
     }
   }
   function tapAt(touch) {
-    if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || bookOpen || hallOpen) { sel = null; return; }
+    if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || hallOpen) { sel = null; return; }
     const c = cellAtMouse();
     if (!touch) { act(c, false); return; }
     if (!(tiles.has(key(c.q, c.r)) || isCand(c.q, c.r))) { sel = null; return; }
@@ -3130,7 +3190,7 @@
     if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen && !bookOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
     if ((e.key === 'c' || e.key === 'C') && !B && S.state === 'play' && !stashOpen && !skillsOpen) { craftOpen ? closeCraft() : openCraft(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;
-    if (e.key === 'Escape') { if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
+    if (e.key === 'Escape') { if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
   if (!TEST) $('inspect').addEventListener('click', (e) => { if (e.target.closest('[data-ieq]')) { const g = inspList[inspIdx], ct = curTile(), i = ct ? ct.loot.indexOf(g) : -1;
       if (i >= 0) { equipFrom(ct, i); if (!ct.loot.length) ct.grave = false; toast('Equipped ' + g.name); } else if (P.bag.indexOf(g) >= 0) equipBag(P.bag.indexOf(g)); closeInspect(); hudDirty = true; return; }
