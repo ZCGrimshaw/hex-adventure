@@ -134,6 +134,20 @@
     .grid { grid-template-columns:repeat(8,38px); } .grid .slot { width:38px; height:42px; } .grid .slot .n { display:none; }
     .btn { height:48px; padding:4px 8px; }
   }
+  #awaken { background:radial-gradient(#2a1a00ee,#000d 70%); z-index:30; overflow:hidden; cursor:pointer; }
+  #awaken .rays { position:absolute; left:50%; top:50%; width:170vmax; height:170vmax; margin:-85vmax 0 0 -85vmax; background:repeating-conic-gradient(#ffd23a33 0 6deg,transparent 6deg 18deg); animation:awSpin 18s linear infinite, awFade 1.6s ease-out both; border-radius:50%; -webkit-mask:radial-gradient(circle,#000 0,transparent 60%); mask:radial-gradient(circle,#000 0,transparent 60%); }
+  #awaken .ring { position:absolute; left:50%; top:50%; width:80px; height:80px; margin:-40px 0 0 -40px; border:4px solid #ffe27a; border-radius:50%; opacity:0; animation:awRing 2.4s ease-out infinite; box-shadow:0 0 30px #ffd23a, inset 0 0 30px #ffd23a; }
+  #awaken .spark { position:absolute; left:50%; top:50%; width:6px; height:6px; background:#fff3b0; border-radius:50%; box-shadow:0 0 10px #ffd23a; opacity:0; animation:awSpark var(--t) ease-out var(--d) infinite; }
+  #awaken .awb { position:relative; text-align:center; animation:awPop .9s cubic-bezier(.2,1.6,.4,1) both; max-width:min(640px,94vw); }
+  #awaken h1 { margin:0; font-size:clamp(34px,9vw,68px); letter-spacing:8px; color:#fff3b0; text-shadow:0 0 12px #ffd23a,0 0 34px #ff9a1a,0 3px 0 #7a4a00; animation:awGlow 1.4s ease-in-out infinite alternate; }
+  #awaken .sub { font-size:18px; color:#ffd23a; margin:4px 0 12px; letter-spacing:2px; font-weight:700; }
+  #awaken .lk { display:grid; grid-template-columns:1fr 1fr; gap:3px 18px; font-size:14px; text-align:left; background:#00000088; border:2px solid #ffd23a; border-radius:8px; padding:10px 14px; }
+  #awaken .lk b { color:#ffe27a; } #awaken .tap { margin-top:12px; font-size:13px; opacity:.8; }
+  @keyframes awSpin { to { transform:rotate(360deg); } } @keyframes awFade { from { opacity:0; } to { opacity:1; } }
+  @keyframes awRing { 0% { transform:scale(.2); opacity:.9; } 100% { transform:scale(11); opacity:0; } }
+  @keyframes awSpark { 0% { transform:translate(0,0) scale(1); opacity:0; } 15% { opacity:1; } 100% { transform:translate(var(--x),var(--y)) scale(.2); opacity:0; } }
+  @keyframes awPop { from { transform:scale(.2); opacity:0; } to { transform:scale(1); opacity:1; } }
+  @keyframes awGlow { from { filter:brightness(1); } to { filter:brightness(1.35); } }
 </style>
 </head>
 <body>
@@ -158,6 +172,7 @@
   <div id="bLog"></div>
   <div id="bBtns"></div>
 </div></div>
+<div id="awaken" class="modal"></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
 <div id="skills" class="modal"><div class="bx" id="skillsBox" style="width:min(860px,96vw)"></div></div>
@@ -360,32 +375,43 @@
     { id: 'str', br: 0, name: 'Strength', max: 5, cost: 1, d: (r) => '+' + 2 * r + ' attack' },
     { id: 'tough', br: 0, name: 'Toughness', max: 5, cost: 1, d: (r) => '+' + 8 * r + ' max health' },
     { id: 'skin', br: 0, name: 'Iron Skin', max: 5, cost: 1, d: (r) => '+' + r + ' defense' },
-    { id: 'crit', br: 0, name: 'Keen Eye', max: 5, cost: 1, d: (r) => '+' + 4 * r + '% critical hit chance' },
+    { id: 'crit', br: 0, name: 'Keen Eye', max: 5, cost: 1, d: (r) => '+' + Math.min(79, 4 * r) + '% critical hit chance' },
     { id: 'wind', br: 0, name: 'Second Wind', max: 3, cost: 2, d: (r) => 'heal ' + 8 * r + '% of max health after every victory' },
     { id: 'mind', br: 1, name: 'Arcane Mind', max: 5, cost: 1, d: (r) => '+' + 4 * r + ' max magic' },
     { id: 'power', br: 1, name: 'Spell Power', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% spell damage and healing' },
     { id: 'flow', br: 1, name: 'Mana Flow', max: 3, cost: 1, d: (r) => '+' + r + ' extra magic for every 2 tiles you reveal' },
-    { id: 'reach', br: 1, name: 'Long Reach', max: 2, cost: 2, d: (r) => 'map spells reach ' + (3 + r) + ' tiles' },
-    { id: 'ward', br: 1, name: 'Arcane Ward', max: 3, cost: 2, d: (r) => 'take ' + 8 * r + '% less damage while you have magic left' },
+    { id: 'reach', br: 1, name: 'Long Reach', max: 2, cost: 2, d: (r) => 'map spells reach ' + Math.min(8, 3 + r) + ' tiles' },
+    { id: 'ward', br: 1, name: 'Arcane Ward', max: 3, cost: 2, d: (r) => 'take ' + Math.min(75, 8 * r) + '% less damage while you have magic left' },
     { id: 'scav', br: 2, name: 'Scavenger', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% gold from everything' },
     { id: 'luck', br: 2, name: 'Lucky Finds', max: 3, cost: 1, d: (r) => '+' + 12 * r + '% chance of extra gear in chests' },
-    { id: 'mule', br: 2, name: 'Pack Mule', max: 2, cost: 2, d: (r) => '+' + r + ' bag slots (bag can reach 14)' },
+    { id: 'mule', br: 2, name: 'Pack Mule', max: 2, cost: 2, d: (r) => '+' + Math.min(r, 8) + ' bag slots (bag can reach 14)' },
     { id: 'flee', br: 2, name: 'Fleet Foot', max: 3, cost: 1, d: (r) => '+' + 10 * r + '% chance to run from battle' },
     { id: 'trap', br: 2, name: 'Trap Sense', max: 2, cost: 1, d: (r) => r >= 2 ? 'traps cannot hurt you' : 'traps do half damage' },
     { id: 'gems', br: 2, name: 'Gem Hunter', max: 1, cost: 3, d: (r) => 'more space gem veins in caves, +1 gem from every guardian and boss' },
   ];
   const BRANCH = [['WARRIOR', '#ff8a6a'], ['MAGE', '#b89aff'], ['EXPLORER', '#7dff8f']];
-  const sk = (id) => (P && P.sk && P.sk[id]) || 0;
+  const skCur = (id) => (P && P.sk && P.sk[id]) || 0;
+  const sk = (id) => skCur(id) + ((P && P.lock && P.lock[id]) || 0); // ranks in the tree now + ranks locked in by awakenings
   const goldMul = () => 1 + .15 * sk('scav');
   const gm = (x) => Math.round(x * goldMul());
-  const spellRange = () => 3 + sk('reach');
+  const spellRange = () => Math.min(8, 3 + sk('reach'));
   const spMul = () => 1 + .15 * sk('power');
   function learnSkill(id) {
     const s = SKILLS.find(x => x.id === id); if (!s) return false;
-    if (sk(id) >= s.max || P.sp < s.cost) return false;
-    P.sp -= s.cost; P.sk[id] = sk(id) + 1;
+    if (skCur(id) >= s.max || P.sp < s.cost) return false;
+    P.sp -= s.cost; P.sk[id] = skCur(id) + 1;
     if (id === 'tough') P.hp += 8; if (id === 'mind') P.mp += 4; if (id === 'mule') P.bagCap = Math.min(14, P.bagCap + 1);
-    hudDirty = true; return true;
+    hudDirty = true;
+    if (SKILLS.every(x => skCur(x.id) >= x.max)) awaken();
+    return true;
+  }
+  // every skill mastered: the ranks are locked in for good, the tree starts fresh, and level-ups cost 1.5x more XP per awakening
+  function awaken() {
+    P.lock = P.lock || {};
+    for (const x of SKILLS) P.lock[x.id] = (P.lock[x.id] || 0) + x.max;
+    P.sk = {}; P.awk = (P.awk || 0) + 1;
+    P.hp = maxHP(); P.mp = maxMP(); hudDirty = true; saveSoon();
+    if (!TEST) later(showAwaken, 250);
   }
 
   // =====================================================
@@ -398,7 +424,7 @@
   let best = 0; try { best = parseInt(localStorage.getItem('hexworld_g3_best') || '0', 10) || 0; } catch (e) {}
   let bestGems = 0; try { bestGems = parseInt(localStorage.getItem('hexworld_g3_gems') || '0', 10) || 0; } catch (e) {}
 
-  const xpNeed = (l) => Math.round(16 * Math.pow(l, 1.45));
+  const xpNeed = (l) => Math.round(16 * Math.pow(l, 1.45) * Math.pow(1.5, (P && P.awk) || 0));
   const gsum = (k) => { let s = 0; for (const sl in P.eq) if (P.eq[sl]) s += P.eq[sl][k] || 0; return s; };
   const maxHP = () => 30 + 6 * (P.lvl - 1) + gsum('hp') + P.bHp + 8 * sk('tough');
   const maxMP = () => 8 + 2 * (P.lvl - 1) + gsum('mp') + 4 * sk('mind');
@@ -468,7 +494,8 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    if (d.P.sk === undefined) d.P.sk = {};
     d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
@@ -508,7 +535,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 17;
+  const BUILD = 18;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -543,7 +570,7 @@
   const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
   function newGame(noOnline) {
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
-    P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
+    P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
     S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
@@ -1273,7 +1300,7 @@
   function hitPlayer(mult, verb) {
     const m = B.m; let d = Math.max(1, Math.round(m.atk * mult * (.85 + .3 * rnd()) - pDef() * .5));
     if (B.defend) d = Math.max(1, Math.round(d * (P.eq.shield ? .3 : .45)));
-    if (sk('ward') && P.mp > 0) d = Math.max(1, Math.round(d * (1 - .08 * sk('ward'))));
+    if (sk('ward') && P.mp > 0) d = Math.max(1, Math.round(d * (1 - Math.min(.75, .08 * sk('ward')))));
     P.hp = Math.max(0, P.hp - d); stats.taken += d; B.hitP = gt; B.lunge = { who: 'm', t: gt }; fx(d, 'p', '#ff6a6a');
     blog(m.name + ' ' + (verb || 'hits you') + ' for ' + d + (B.defend ? ' (blocked)' : '') + '.');
   }
@@ -1297,7 +1324,7 @@
       B.lunge = { who: 'p', t: gt };
       if (m.trait === 'dodge' && rnd() < .22) { blog(m.name + ' dodges your attack!'); fx('MISS', 'm', '#aaaaaa'); }
       else {
-        const crit = rnd() * 100 < 6 + gsum('crit') + 4 * sk('crit');
+        const crit = rnd() * 100 < Math.min(85, 6 + gsum('crit') + 4 * sk('crit'));
         if (crit) fx('CRIT', 'm', '#ffe14a');
         const d = hitMon((pAtk() * (.85 + .3 * rnd()) - mdef(m) * .5) * (crit ? 1.8 : 1), crit ? '#ffe14a' : '#ffffff');
         blog((crit ? 'CRITICAL! ' : '') + 'You hit ' + m.name + ' for ' + d + '.');
@@ -2828,19 +2855,32 @@
   };
 
   let skillsOpen = false;
+  let awakenT = 0;
+  function showAwaken() {
+    const el = $('awaken'); if (!el || TEST) return;
+    closeSkills();
+    let sp = ''; for (let i = 0; i < 46; i++) { const a = Math.random() * 6.283, d = 140 + Math.random() * 360;
+      sp += '<i class="spark" style="--x:' + Math.round(Math.cos(a) * d) + 'px;--y:' + Math.round(Math.sin(a) * d) + 'px;--t:' + (1.6 + Math.random() * 1.6).toFixed(2) + 's;--d:' + (Math.random() * 1.8).toFixed(2) + 's"></i>'; }
+    const rows = SKILLS.map(x => { const n = (P.lock && P.lock[x.id]) || 0; return n ? '<div><b>' + x.name + '</b><br>' + x.d(n) + '</div>' : ''; }).join('');
+    el.innerHTML = '<div class="rays"></div><div class="ring"></div><div class="ring" style="animation-delay:.8s"></div><div class="ring" style="animation-delay:1.6s"></div>' + sp +
+      '<div class="awb"><h1>AWAKENING</h1><div class="sub">&#9733; POWER LEVEL ' + (P.awk + 1) + ' &#9733;<br><span style="font-size:14px;font-weight:400">Every skill mastered. Your power is locked in for good.</span></div>' +
+      '<div class="lk">' + rows + '</div><div class="note" style="margin-top:10px;color:#ffe27a">Your skill tree is reborn, but skill points now come ' + Math.pow(1.5, P.awk).toFixed(2).replace(/\.?0+$/, '') + 'x slower.</div><div class="tap">Click to continue</div></div>';
+    el.style.display = 'flex'; awakenT = performance.now(); flash = 1;
+    el.onclick = () => { if (performance.now() - awakenT > 1500) { el.style.display = 'none'; hudDirty = true; toast('You are awakened! A fresh skill tree awaits (press K)'); } };
+  }
   function openSkills() { if (TEST) return; skillsOpen = true; bagSel = null; aim = null; $('skills').style.display = 'flex'; renderSkills(); }
   function closeSkills() { skillsOpen = false; $('skills').style.display = 'none'; hudDirty = true; }
   function renderSkills() {
     if (TEST || !skillsOpen) return;
-    let h = '<h2>SKILLS</h2><div class="note" style="margin:0 0 8px">You earn 1 skill point every level and 2 for each boss. Points spent are permanent. ' +
+    let h = '<h2>SKILLS' + (P.awk ? ' <span style="color:#ffd23a">&#9733; AWAKENED x' + P.awk + '</span>' : '') + '</h2><div class="note" style="margin:0 0 8px">' + (P.awk ? 'Awakened bonuses are locked in for good. Level-ups need ' + Math.pow(1.5, P.awk).toFixed(2).replace(/\.?0+$/, '') + 'x the XP. ' : '') + 'You earn 1 skill point every level and 2 for each boss. Points spent are permanent. ' +
       'Available: <span class="sppill">' + P.sp + '</span></div><div class="tree">';
     BRANCH.forEach(([bn, col], bi) => {
       h += '<div class="branch"><h3 style="color:' + col + '">' + bn + '</h3>';
       for (const x of SKILLS.filter(x => x.br === bi)) {
-        const r = sk(x.id), maxed = r >= x.max, can = !maxed && P.sp >= x.cost;
+        const r = skCur(x.id), lk = (P.lock && P.lock[x.id]) || 0, maxed = r >= x.max, can = !maxed && P.sp >= x.cost;
         h += '<div class="sk' + (maxed ? ' maxed' : '') + '"><span class="rk">' + r + '/' + x.max + '</span><b style="color:' + col + '">' + x.name + '</b>' +
           '<div class="pips">' + Array.from({ length: x.max }, (_, i) => '<i class="' + (i < r ? 'on' : '') + '"></i>').join('') + '</div>' +
-          (r ? '<div>Now: ' + x.d(r) + '</div>' : '') + (maxed ? '<div class="nx">Mastered</div>' : '<div class="nx">Next: ' + x.d(r + 1) + '</div>' +
+          (r + lk ? '<div>Now: ' + x.d(r + lk) + '</div>' : '') + (maxed ? '<div class="nx">Mastered</div>' : '<div class="nx">Next: ' + x.d(r + lk + 1) + '</div>' +
           '<button class="act' + (can ? '' : ' off') + '" data-sk="' + x.id + '">Learn<small>' + x.cost + ' point' + (x.cost > 1 ? 's' : '') + '</small></button>') + '</div>';
       }
       h += '</div>';
@@ -2851,7 +2891,7 @@
   if (!TEST) $('skillsBox').onclick = (e) => {
     if (e.target.id === 'skClose') return closeSkills();
     const b = e.target.closest('[data-sk]'); if (!b || b.classList.contains('off')) return;
-    if (learnSkill(b.dataset.sk)) { const x = SKILLS.find(s => s.id === b.dataset.sk); toast(x.name + ' rank ' + sk(x.id) + ': ' + x.d(sk(x.id))); renderSkills(); }
+    if (learnSkill(b.dataset.sk)) { const x = SKILLS.find(s => s.id === b.dataset.sk); if (P.sk[x.id]) toast(x.name + ' rank ' + sk(x.id) + ': ' + x.d(sk(x.id))); renderSkills(); }
   };
   function openCraft() { if (TEST) return; craftOpen = true; bagSel = null; $('craft').style.display = 'flex'; renderCraft(); }
   function closeCraft() { craftOpen = false; $('craft').style.display = 'none'; hudDirty = true; }
