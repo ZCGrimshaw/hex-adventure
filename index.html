@@ -468,7 +468,8 @@
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
     d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
-    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false }, d.S);
+    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
     return d;
   }
@@ -506,7 +507,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 15;
+  const BUILD = 16;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -543,7 +544,7 @@
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
-    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
+    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
@@ -613,13 +614,23 @@
     if (d >= 40) w.push(['cdoor', .8]);
     return wpick(w);
   }
+  // shrines show up when you need one: hurt, bag full, or a long stretch without a checkpoint
+  function shrineDue(d) {
+    if (d >= S.nextShrine) return true;
+    const since = d - S.lastShrine;
+    if (since < 20) return false;
+    if (since >= 60 + Math.min(30, Math.floor(d / 10))) return true;
+    const hpf = P.hp / maxHP();
+    const need = (hpf < .4 ? (.4 - hpf) / .4 * .35 + .04 : 0) + (bagUsed() >= P.bagCap ? .05 : 0) + (since - 20) * .004;
+    return rnd() < need;
+  }
   function genTile(q, r) {
     const d = S.revealed;
     const t = { q, r, type: 'grass', born: gt, phase: (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) * 0.45, loot: [] };
     let type;
     if (!S.boss && d >= S.nextBoss) type = 'lair';
     else if (S.boss && !S.boss.open && S.boss.forced.length && d >= S.boss.nextForce) { type = S.boss.forced.shift(); S.boss.nextForce = d + 2 + ri(0, 1); }
-    else if (d >= S.nextShrine) { type = 'shrine'; S.nextShrine = d + 22 + ri(0, 8) + Math.min(20, Math.floor(d / 12)); }
+    else if (shrineDue(d)) { type = 'shrine'; S.nextShrine = 1e9; S.lastShrine = d; }
     else if (d === 2 && !P.eq.weapon) { type = 'gear'; t.loot.push(makeGear(0, 0, 'weapon')); }
     else if (d === 8 && !Object.keys(P.spells).length) type = 'rune';
     else if (!S.caveSeen && d >= S.firstCave) type = 'cave';

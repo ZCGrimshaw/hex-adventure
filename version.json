@@ -1,4 +1,1 @@
-{
-  "build": 15,
-  "notes": "Your hero now stays on top of the tiles while walking between them."
-}
+{ "build": 16, "notes": "Shrines now appear when you need them: sooner when you are hurt, rarer when you are healthy." }
