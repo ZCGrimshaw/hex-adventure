@@ -28,6 +28,9 @@
   #gear .lbl { color:#8fa898; width:44px; flex:none; font-weight:700; }
   #gear .sp { cursor:pointer; color:#c8b8ff; }
   #gear.min .body { display:none; }
+  #zoomBtns { left:8px; bottom:96px; display:flex; flex-direction:column; gap:6px; pointer-events:auto; }
+  #zoomBtns button { width:40px; height:40px; border-radius:10px; border:1px solid #45624f; background:#0a120dcc; color:#d8f0e0; font:700 22px/1 system-ui,sans-serif; padding:0; cursor:pointer; touch-action:manipulation; }
+  #zoomBtns button:active { background:#1d3a28; border-color:#ffe14a; }
   #tip { left:0; right:0; top:12px; text-align:center; font-size:13px; pointer-events:none; }
   #tip span { background:#0a120ddd; border:1px solid #45624f; padding:4px 10px; border-radius:5px; display:none; }
   #toast { left:0; right:0; top:20%; text-align:center; font-size:16px; pointer-events:none; opacity:0; transition:opacity .4s; padding:0 10px; }
@@ -137,6 +140,7 @@
 <canvas id="c"></canvas>
 <div id="stat" class="ui panel"></div>
 <div id="side" class="ui"><div id="gear" class="panel"></div><div id="mapbox" class="panel"><canvas id="mini" width="232" height="150"></canvas></div></div>
+<div id="zoomBtns" class="ui"><button id="zIn" aria-label="Zoom in">+</button><button id="zCtr" aria-label="Reset view">&#9678;</button><button id="zOut" aria-label="Zoom out">&minus;</button></div>
 <div id="tip" class="ui"><span id="tipText"></span></div>
 <div id="toast" class="ui"><span id="toastText"></span></div>
 <div id="bottom" class="ui">
@@ -387,7 +391,7 @@
   //  STATE
   // =====================================================
   let W = 320, H = 200, scale = 3, gt = 0;
-  let tiles, mons, P, S, stats, guy, B = null, particles = [], cam = { x: 0, y: 0 }, mouse = { x: -999, y: -999 };
+  let tiles, mons, P, S, stats, guy, B = null, particles = [], cam = { x: 0, y: 0 }, mouse = { x: -999, y: -999 }, pan = { x: 0, y: 0 }, sel = null;
   let bagSel = null, pet = null, fireT = 0, toastT = 0, roamT = 0, flash = 0, hudDirty = true, stashOpen = false, craftOpen = false;
   let glows = [], mistT = 0, darkC = null;
   let best = 0; try { best = parseInt(localStorage.getItem('hexworld_g3_best') || '0', 10) || 0; } catch (e) {}
@@ -502,7 +506,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 12;
+  const BUILD = 13;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -2137,7 +2141,7 @@
     const sx = wx + ox, sy = wy + oy; if (sx > 6 && sx < W - 6 && sy > 6 && sy < H - 6) return;
     const x = clamp(sx, 8, W - 9), y = clamp(sy, 8, H - 9); px(x - 4, y - 4, 9, 9, '#000'); px(x - 3, y - 3, 7, 7, col); px(x - 1, y - 1, 3, 3, '#000'); px(x, y, 1, 1, col);
   }
-  const view = () => ({ ox: Math.round(W / 2) - Math.round(cam.x), oy: Math.round(H / 2) - Math.round(cam.y) });
+  const view = () => ({ ox: Math.round(W / 2) - Math.round(cam.x + pan.x), oy: Math.round(H / 2) - Math.round(cam.y + pan.y) });
   const cellAtMouse = () => { const { ox, oy } = view(); return fromWorld(mouse.x - ox, mouse.y - oy); };
   const TIPS = { grass: 'Grass', tree: 'Tree: chop for wood', bush: 'Berry bush', river: 'River: water and fish', stone: 'Stone', chest: 'Treasure chest!', opened: 'Opened chest',
     rune: 'Rune stone: magic', mystery: '??? Step on it to find out', merchant: 'Merchant: spend your gold', shrine: 'Shrine: checkpoint + your stash (monsters cannot attack you here)', trap: 'Grass',
@@ -2164,6 +2168,7 @@
     update(dt);
     const ct = curTile();
     cam.x += (guy.x - cam.x) * .08; cam.y += (guy.y - 10 - elev(ct) - cam.y) * .08;
+    if (guy.mv || guy.target) { const k = Math.pow(.04, dt); pan.x *= k; pan.y *= k; if (Math.abs(pan.x) + Math.abs(pan.y) < .5) pan.x = pan.y = 0; }
     const { ox, oy } = view();
     G = ctx;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -2179,7 +2184,9 @@
 
     let hoverT = null, hoverC = null;
     const busy = B || stashOpen || craftOpen || skillsOpen || hallOpen;
-    if (S.state === 'play' && !busy && mouse.x > -900) { const c = cellAtMouse(), k = key(c.q, c.r); if (tiles.has(k)) hoverT = tiles.get(k); else if (isCand(c.q, c.r)) hoverC = c; }
+    if (sel && (S.state !== 'play' || busy || !(tiles.has(key(sel.q, sel.r)) || isCand(sel.q, sel.r)))) sel = null;
+    const hcell = sel || (mouse.x > -900 ? cellAtMouse() : null);
+    if (S.state === 'play' && !busy && hcell) { const c = hcell, k = key(c.q, c.r); if (tiles.has(k)) hoverT = tiles.get(k); else if (isCand(c.q, c.r)) hoverC = c; }
     canvas.style.cursor = aim ? 'crosshair' : hoverT || hoverC ? 'pointer' : 'default';
     if (hoverT) {
       const m = monAt(hoverT.q, hoverT.r); let s = TIPS[hoverT.type] || '';
@@ -2190,10 +2197,11 @@
       if (m) s = m.name + ' Lv ' + m.L + ' · looks ' + threatWord(m) + (m.trait ? ' · ' + TRAITS[m.trait] : '') + (m.roam ? ' · hunter' : '') + (m.heldXp ? ' · holds your XP' : '');
       else if (hoverT.grave) s = 'Your grave: walk here to recover your things';
       else if (hoverT.loot.length) s += ' · ' + hoverT.loot.map(i => i.kind === 'gear' ? i.name : ITEMS[i.id].name).slice(0, 3).join(', ');
-      if (aim) { const u = spellUse(aim, hoverT); s = u.fn ? 'Cast ' + SPELLS[aim].name + ' here' : u.why; }
+      if (aim) { const u = spellUse(aim, hoverT); s = u.fn ? 'Cast ' + SPELLS[aim].name + ' here' + (sel ? ' · tap again to confirm' : '') : u.why; }
+      else if (sel) s += ' · tap again to go';
       setTip(s);
     } else if (aim) setTip('Choose a highlighted target for ' + SPELLS[aim].name + ' (Esc to cancel)');
-    else if (hoverC) setTip(mistCap() ? 'Dark mist: defeat ' + S.boss.m.name + ' to explore further' : hd(hoverC.q - guy.q, hoverC.r - guy.r) === 1 ? 'Click to reveal' : 'Click to walk there and reveal'); else setTip('');
+    else if (hoverC) setTip(mistCap() ? 'Dark mist: defeat ' + S.boss.m.name + ' to explore further' : hd(hoverC.q - guy.q, hoverC.r - guy.r) === 1 ? (sel ? 'Tap again to reveal' : 'Click to reveal') : (sel ? 'Tap again to walk there and reveal' : 'Click to walk there and reveal')); else setTip('');
 
     const list = [];
     for (const t of tiles.values()) { const w = toWorld(t.q, t.r), sx = w.x + ox, sy = w.y + oy; if (sx < -50 || sx > W + 50 || sy < -60 || sy > H + 70) continue; list.push({ t, w, y: w.y }); }
@@ -2223,6 +2231,11 @@
       const pul = Math.sin(gt * 6) > 0;
       for (const t of tiles.values()) { if (hd(t.q - guy.q, t.r - guy.r) > spellRange()) continue; const u = spellUse(aim, t); if (!u.fn) continue; const w = toWorld(t.q, t.r), cx = Math.round(w.x) + ox, cy = Math.round(w.y) + oy + Math.round(Math.sin(gt * 1.5 + t.phase) * 2.6) - elev(t);
         outlineHex(cx, cy, pul ? SPCOL[aim] : '#ffffff'); glow(cx, cy, 22, SPCOL[aim], .25); }
+    }
+    if (sel && S.state === 'play' && !busy) {
+      const w = toWorld(sel.q, sel.r), st = tiles.get(key(sel.q, sel.r)), cx = Math.round(w.x) + ox, cy = Math.round(w.y) + oy - (st ? elev(st) : 0), bob = Math.round(Math.sin(gt * 7) * 2), ay = cy - 30 + bob;
+      glow(cx, cy, 34, '#ffffff', .22);
+      for (let i = 0; i < 5; i++) { px(cx - 4 + i, ay + i - 1, 9 - 2 * i, 1, '#000'); px(cx - 3 + i, ay + i, 7 - 2 * i, 1, i < 2 ? '#fff2a0' : '#ffe14a'); }
     }
     mapFx = mapFx.filter(f => gt - f.t0 < f.dur + .05);
     for (const f of mapFx) { const p = Math.min(1, (gt - f.t0) / f.dur);
@@ -2503,22 +2516,86 @@
 
   // ---------- input ----------
   function setMouse(e) { const r = canvas.getBoundingClientRect(); mouse.x = Math.floor((e.clientX - r.left) / scale); mouse.y = Math.floor((e.clientY - r.top) / scale); }
-  canvas.addEventListener('pointermove', setMouse);
-  canvas.addEventListener('pointerleave', () => { mouse.x = mouse.y = -999; });
-  canvas.addEventListener('pointerdown', (e) => {
-    setMouse(e); if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || hallOpen) return;
-    if (e.button === 2) { if (aim) { aim = null; hudDirty = true; } return; }
-    if (aim) { const c0 = cellAtMouse(), t0 = tiles.get(key(c0.q, c0.r)); if (t0) castAt(aim, t0); else { aim = null; hudDirty = true; } return; }
+  // ---- zoom: whole-number pixel scales stay crisp; below 1x the canvas is smoothed ----
+  const ZL = [0.6, 0.8, 1, 2, 3, 4, 5, 6, 8, 10];
+  let zoomS = null; try { const z = parseFloat(localStorage.getItem('hexzoom')); if (z > 0) zoomS = z; } catch (_) {}
+  const autoScale = () => Math.max(1, Math.round(Math.min(window.innerHeight / 330, window.innerWidth / 280)));
+  function zoomLevels() {
+    const lo = Math.sqrt(window.innerWidth * window.innerHeight / 900000) - .001, hi = window.innerWidth / 120, a = autoScale();
+    const l = ZL.filter(v => v >= lo && v <= hi); if (!l.includes(a)) l.push(a);
+    return l.sort((x, y) => x - y);
+  }
+  function curScale() { const l = zoomLevels(); if (zoomS == null) return autoScale(); return l.reduce((b, v) => Math.abs(v - zoomS) < Math.abs(b - zoomS) ? v : b, l[0]); }
+  function zoomBy(d) {
+    const l = zoomLevels(), i = clamp(l.indexOf(curScale()) + d, 0, l.length - 1); if (l[i] === curScale()) return;
+    zoomS = l[i]; try { localStorage.setItem('hexzoom', String(zoomS)); } catch (_) {} resize(); hudDirty = true;
+  }
+  function zoomReset() { zoomS = null; pan.x = pan.y = 0; try { localStorage.removeItem('hexzoom'); } catch (_) {} resize(); }
+
+  // ---- pointer: a tap picks a hex; on touch the same hex must be tapped again to commit ----
+  const ptrs = new Map(); let gest = null, wheelAcc = 0, wheelT = 0;
+  const pdist = () => { const v = [...ptrs.values()]; return Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y) || 1; };
+  function act(c, touch) {
+    if (aim) { const t0 = tiles.get(key(c.q, c.r)); if (t0) castAt(aim, t0); else if (!touch) { aim = null; hudDirty = true; } return; }
     if (bagSel !== null) { bagSel = null; hudDirty = true; }
-    const c = cellAtMouse(), k = key(c.q, c.r);
+    const k = key(c.q, c.r);
     if (tiles.has(k)) { guy.pending = null; guy.target = { q: c.q, r: c.r }; }
     else if (isCand(c.q, c.r)) {
       if (!guy.mv && hd(c.q - guy.q, c.r - guy.r) === 1) { guy.target = null; reveal(c.q, c.r); }
       else { const a = approach(c); if (a) { guy.target = a; guy.pending = c; } }
     }
+  }
+  function tapAt(touch) {
+    if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || hallOpen) { sel = null; return; }
+    const c = cellAtMouse();
+    if (!touch) { act(c, false); return; }
+    if (!(tiles.has(key(c.q, c.r)) || isCand(c.q, c.r))) { sel = null; return; }
+    if (sel && sel.q === c.q && sel.r === c.r) { sel = null; act(c, true); }
+    else sel = { q: c.q, r: c.r };
+  }
+  canvas.addEventListener('pointermove', (e) => {
+    setMouse(e); const p = ptrs.get(e.pointerId); if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+    if (!gest) return;
+    if (gest.pinch) {
+      if (ptrs.size < 2) return;
+      const d = pdist(), r = d / gest.d0;
+      if (r > 1.3) { zoomBy(1); gest.d0 = d; } else if (r < .77) { zoomBy(-1); gest.d0 = d; }
+      return;
+    }
+    if (e.pointerId !== gest.id) return;
+    if (!gest.moved && Math.hypot(e.clientX - gest.sx, e.clientY - gest.sy) > (gest.touch ? 10 : 6)) { gest.moved = true; dragLast = { x: gest.sx, y: gest.sy }; }
+    if (gest.moved) {
+      pan.x = clamp(pan.x - (e.clientX - dragLast.x) / scale, -400, 400); pan.y = clamp(pan.y - (e.clientY - dragLast.y) / scale, -300, 300);
+      dragLast = { x: e.clientX, y: e.clientY };
+    }
   });
+  let dragLast = { x: 0, y: 0 };
+  canvas.addEventListener('pointerleave', () => { mouse.x = mouse.y = -999; });
+  canvas.addEventListener('pointerdown', (e) => {
+    setMouse(e);
+    if (e.button === 2) { if (aim && S.state === 'play' && !B) { aim = null; hudDirty = true; } return; }
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 1) gest = { id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false, pinch: false, touch: e.pointerType !== 'mouse' };
+    else if (ptrs.size === 2 && gest) { gest.pinch = true; gest.moved = true; gest.d0 = pdist(); }
+  });
+  function pend(e) {
+    const g = gest; ptrs.delete(e.pointerId);
+    if (g && !g.pinch && !g.moved && e.type === 'pointerup' && e.pointerId === g.id) { setMouse(e); tapAt(g.touch); }
+    if (!ptrs.size) gest = null; else if (g) { g.pinch = true; g.moved = true; g.d0 = 1e9; }
+  }
+  canvas.addEventListener('pointerup', pend); canvas.addEventListener('pointercancel', pend);
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault(); wheelAcc += e.deltaY * (e.deltaMode === 1 ? 33 : 1);
+    const n = performance.now(); if (Math.abs(wheelAcc) < 50 || n - wheelT < 110) return;
+    zoomBy(wheelAcc < 0 ? 1 : -1); wheelAcc = 0; wheelT = n;
+  }, { passive: false });
+  const zb = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); };
+  if (!TEST) { zb('zIn', () => zoomBy(1)); zb('zOut', () => zoomBy(-1)); zb('zCtr', zoomReset); }
   window.addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key === '+' || e.key === '=') { zoomBy(1); return; } if (e.key === '-' || e.key === '_') { zoomBy(-1); return; } if (e.key === '0') { zoomReset(); return; }
     if (/^[1-5]$/.test(e.key)) { const known = SP_ORDER.filter(k => P.spells[k]); const k = known[+e.key - 1]; if (k) selectSpell(k); return; }
     if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
     if ((e.key === 'c' || e.key === 'C') && !B && S.state === 'play' && !stashOpen && !skillsOpen) { craftOpen ? closeCraft() : openCraft(); return; }
@@ -2528,11 +2605,11 @@
   window.addEventListener('pagehide', () => saveNow());
   if (!TEST) document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
   function resize() {
-    scale = Math.max(1, Math.round(Math.min(window.innerHeight / 330, window.innerWidth / 280)));
+    scale = curScale();
     W = Math.ceil(window.innerWidth / scale); H = Math.ceil(window.innerHeight / scale);
     const uz = window.innerWidth < 760 ? 1 : clamp(Math.min(window.innerHeight / 820, window.innerWidth / 1350), 1, 2);
     if (!TEST) document.documentElement.style.setProperty('--uz', uz.toFixed(3));
-    canvas.width = W; canvas.height = H; canvas.style.width = (W * scale) + 'px'; canvas.style.height = (H * scale) + 'px'; ctx.imageSmoothingEnabled = false;
+    canvas.width = W; canvas.height = H; canvas.style.width = (W * scale) + 'px'; canvas.style.height = (H * scale) + 'px'; ctx.imageSmoothingEnabled = false; if (!TEST) canvas.style.imageRendering = scale < 1 ? 'auto' : '';
     if (!TEST) buildBackdrop();
   }
   window.addEventListener('resize', resize);
@@ -2542,7 +2619,7 @@
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   window.__g3 = { get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();

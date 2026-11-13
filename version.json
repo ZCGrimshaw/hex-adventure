@@ -1,1 +1,4 @@
-{ "build": 12, "notes": "New art: richer colours, animated water, swaying trees and a brighter sky." }
+{
+  "build": 13,
+  "notes": "Pinch or scroll to zoom, drag to look around, and on touch tap a hex once to pick it, again to confirm."
+}
