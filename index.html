@@ -102,6 +102,7 @@
   .sk .nx { color:#9fc8a8; font-size:11px; } .sk .act { min-width:0; padding:4px 10px; font-size:12px; margin-top:4px; }
   .sppill { display:inline-block; background:#ffd23a; color:#000; border-radius:10px; padding:1px 8px; font-weight:700; text-shadow:none; }
   .ui, .modal .bx { zoom: var(--uz); }
+  .modal .bx { max-height: calc(94vh / var(--uz, 1)); max-width: calc(96vw / var(--uz, 1)); }
   #stat { width:250px; padding:10px 12px; }
   #stat .hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
   #stat .gems { display:flex; align-items:center; gap:5px; font-size:19px; color:#f0b8ff; } #stat .gems img { width:26px; height:26px; }
@@ -545,7 +546,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 20;
+  const BUILD = 21;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -2763,6 +2764,7 @@
   let inspList = [], inspIdx = 0;
   function inspectGear(g, list) {
     inspList = list && list.length ? list : [g]; inspIdx = Math.max(0, inspList.indexOf(g));
+    const ct = curTile(), inTile = ct && ct.loot.indexOf(g) >= 0, inBag = P.bag.indexOf(g) >= 0, canEq = (inTile || inBag) && !B && S.state === 'play' && !guy.mv;
     const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
     const card = (it, title) => '<div style="flex:1;min-width:150px"><div class="dim" style="font-size:12px;letter-spacing:1px">' + title + '</div>' +
       (it ? '<img src="' + gearIconURL(it) + '" style="width:112px;height:112px;image-rendering:pixelated;margin:6px 0;filter:drop-shadow(0 0 8px ' + it.col + '88)"><div style="font-weight:700;color:' + it.col + '">' + it.name + '</div>'
@@ -2775,7 +2777,7 @@
     }
     $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + card(g, 'ON THE GROUND') + '</div>' +
       '<table style="width:100%;margin-top:8px;font-size:14px;text-align:center"><tr class="dim"><th style="text-align:left"></th><th>Now</th><th>This</th><th>Change</th></tr>' + rows + '</table>' +
-      '<div class="dim" style="margin-top:8px;font-size:12px">' + (inspList.length > 1 ? 'Use the arrows or Left / Right keys to flip through items. ' : '') + 'Click outside or press Esc to close</div>';
+      (canEq ? '<button class="act hot" data-ieq="1" style="margin-top:10px;font-size:16px">Equip ' + g.name + (gpower(g) > gpower(old) ? ' &#9650;' : '') + '</button>' : '') + '<div class="dim" style="margin-top:8px;font-size:12px">' + (inspList.length > 1 ? 'Use the arrows or Left / Right keys to flip through items. ' : '') + 'Click outside or press Esc to close</div>';
     $('inspect').style.display = 'flex'; inspectOpen = true;
   }
   let inspectOpen = false;
@@ -3060,7 +3062,9 @@
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.key === 'Escape') { if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
-  if (!TEST) $('inspect').addEventListener('click', (e) => { const b = e.target.closest('[data-ic]'); if (b) return inspectCycle(+b.dataset.ic); if (!e.target.closest('.bx')) closeInspect(); });
+  if (!TEST) $('inspect').addEventListener('click', (e) => { if (e.target.closest('[data-ieq]')) { const g = inspList[inspIdx], ct = curTile(), i = ct ? ct.loot.indexOf(g) : -1;
+      if (i >= 0) { equipFrom(ct, i); if (!ct.loot.length) ct.grave = false; toast('Equipped ' + g.name); } else if (P.bag.indexOf(g) >= 0) equipBag(P.bag.indexOf(g)); closeInspect(); hudDirty = true; return; }
+    const b = e.target.closest('[data-ic]'); if (b) return inspectCycle(+b.dataset.ic); if (!e.target.closest('.bx')) closeInspect(); });
   window.addEventListener('keydown', (e) => { if (!inspectOpen) return; if (e.key === 'ArrowLeft') inspectCycle(-1); else if (e.key === 'ArrowRight') inspectCycle(1); });
   // right-click (or long-press on touch) an Equip / Carry button to compare that piece
   if (!TEST) { const ac = $('actions'); let lp = null;
