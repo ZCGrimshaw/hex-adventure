@@ -37,7 +37,9 @@
   #toast span { background:#000b; padding:6px 14px; border-radius:6px; border:1px solid #ffffff22; display:inline-block; max-width:620px; }
   #bottom { left:0; right:0; bottom:8px; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none; }
   #actions { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; padding:0 8px; max-width:96vw; }
-  #bagbar { display:flex; gap:8px; align-items:center; pointer-events:auto; padding:6px 8px; }
+  #bagbar { display:flex; flex-direction:column; gap:5px; align-items:center; pointer-events:auto; padding:6px 8px; }
+  #spellrow, #itemrow { display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap; }
+  #bookBtn { padding:4px 8px; font-size:11px; }
   #bag { display:flex; gap:5px; }
   .slot { position:relative; width:50px; height:52px; box-sizing:border-box; border:2px solid #4f6d5a; background:linear-gradient(#1c2c22,#0d1610); border-radius:6px;
           display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; font-size:9px; cursor:pointer; text-align:center; line-height:1.05; font-weight:700; overflow:hidden; }
@@ -160,7 +162,7 @@
 <div id="toast" class="ui"><span id="toastText"></span></div>
 <div id="bottom" class="ui">
   <div id="actions"></div>
-  <div id="bagbar" class="panel"><div id="spells"></div><div class="sep"></div><div id="bag"></div><button class="btn alt" id="craftBtn">CRAFT<small style="display:block;font-size:9px;font-weight:400">key C</small></button><button class="btn" id="skillBtn">SKILLS<small style="display:block;font-size:9px;font-weight:400">key K</small></button></div>
+  <div id="bagbar" class="panel"><div id="spellrow"><div id="spells"></div><button class="btn" id="bookBtn">SPELLBOOK<small style="display:block;font-size:9px;font-weight:400" id="bookSub"></small></button></div><div id="itemrow"><div id="bag"></div><button class="btn alt" id="craftBtn">CRAFT<small style="display:block;font-size:9px;font-weight:400">key C</small></button><button class="btn" id="skillBtn">SKILLS<small style="display:block;font-size:9px;font-weight:400">key K</small></button></div></div>
 </div>
 <div id="battle" class="modal"><div class="bx">
   <canvas id="bc" width="160" height="84"></canvas>
@@ -174,6 +176,7 @@
   <div id="bBtns"></div>
 </div></div>
 <div id="awaken" class="modal"></div>
+<div id="spellbook" class="modal"><div class="bx" id="bookBox" style="width:min(560px,95vw)"></div></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
 <div id="skills" class="modal"><div class="bx" id="skillsBox" style="width:min(860px,96vw)"></div></div>
@@ -390,6 +393,7 @@
     { id: 'power', br: 1, name: 'Spell Power', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% spell damage and healing' },
     { id: 'flow', br: 1, name: 'Mana Flow', max: 3, cost: 1, d: (r) => '+' + r + ' extra magic for every 2 tiles you reveal' },
     { id: 'reach', br: 1, name: 'Long Reach', max: 2, cost: 2, d: (r) => 'map spells reach ' + Math.min(8, 3 + r) + ' tiles' },
+    { id: 'focus', br: 1, name: 'Arcane Focus', max: 3, cost: 2, d: (r) => '+' + Math.min(r, 3) + ' spell slot' + (r > 1 ? 's' : '') + ' (' + Math.min(6, 3 + r) + ' total)' },
     { id: 'alchemy', br: 1, name: 'Alchemy', max: 1, cost: 1, d: (r) => 'craft magic potions from water and a crystal shard' },
     { id: 'ward', br: 1, name: 'Arcane Ward', max: 3, cost: 2, d: (r) => 'take ' + Math.min(75, 8 * r) + '% less damage while you have magic left' },
     { id: 'scav', br: 2, name: 'Scavenger', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% gold from everything' },
@@ -412,6 +416,7 @@
     if (skCur(id) >= s.max || P.sp < s.cost) return false;
     P.sp -= s.cost; P.sk[id] = skCur(id) + 1;
     if (id === 'tough') P.hp += 8; if (id === 'mind') P.mp += 4; if (id === 'mule') P.bagCap = Math.min(14, P.bagCap + 1);
+    if (id === 'focus') fillLoadout();
     hudDirty = true;
     if (SKILLS.every(x => skCur(x.id) >= x.max)) awaken();
     return true;
@@ -466,7 +471,11 @@
   const esize = (e) => typeof e === 'string' ? isize(e) : 2;
   const ename = (e) => typeof e === 'string' ? ITEMS[e].name : e.name;
   const bagUsed = () => P.bag.reduce((s, e) => s + esize(e), 0);
-  const stashUsed = () => S.stash.reduce((s, e) => s + esize(e), 0);
+  // the stash is a flat list (saves stay compatible) but identical items share slots: up to 10 per slot
+  const STACK = 10;
+  function stashSlots(arr) { let n = 0; const c = {}; for (const e of arr) { if (typeof e === 'string') c[e] = (c[e] || 0) + 1; else n += 2; } for (const k in c) n += isize(k) * Math.ceil(c[k] / STACK); return n; }
+  const stashUsed = () => stashSlots(S.stash);
+  const canStash = (e) => stashSlots(S.stash.concat([e])) <= S.stashCap;
   const countOf = (id, withStash) => P.bag.filter(x => x === id).length + (withStash ? S.stash.filter(x => x === id).length : 0);
   const toLoot = (e) => typeof e === 'string' ? { kind: 'item', id: e } : e;
   const atShrine = () => !!curTile() && curTile().type === 'shrine';
@@ -505,8 +514,9 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.sk === undefined) d.P.sk = {};
+    if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
     d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
@@ -546,7 +556,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 21;
+  const BUILD = 22;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -581,7 +591,7 @@
   const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
   function newGame(noOnline) {
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
-    P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
+    P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
     S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
@@ -897,7 +907,7 @@
   }
   function learnSpell() {
     const d = S.revealed, avail = Object.keys(SPELLS).filter(k => SPELLS[k].d <= d && !P.spells[k]);
-    if (avail.length) { const k = avail[0] === 'fire' ? 'fire' : pick(avail); P.spells[k] = 1; toast('You learned ' + SPELLS[k].name + '! (' + SPELLS[k].desc + ')'); }
+    if (avail.length) { const k = avail[0] === 'fire' ? 'fire' : pick(avail); P.spells[k] = 1; fillLoadout(); toast('You learned ' + SPELLS[k].name + '! (' + SPELLS[k].desc + ')' + (P.loadout.indexOf(k) < 0 ? ' Your spell slots are full: swap spells at a shrine.' : '')); }
     else { const k = pick(Object.keys(P.spells)); P.spells[k]++; toast(SPELLS[k].name + ' grows stronger (Lv ' + P.spells[k] + ')'); }
     hudDirty = true;
   }
@@ -997,6 +1007,7 @@
     }
     if (t.type === 'shrine') A.push({ label: 'Rest', sub: 'full heal, but a monster stirs nearby', off: P.hp >= maxHP() && P.mp >= maxMP() && 'Already fully rested', run() {
       P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; toast('You rest at the shrine and feel restored'); later(spawnMist, 1200); } });
+    if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
     if (t.type === 'tree') gather('Chop tree', '+1 wood', 'wood', () => { t.type = 'grass'; t.stump = true; regrow('tree', 75); });
@@ -1091,6 +1102,14 @@
 
   // ---------- spells on the map ----------
   const SP_ORDER = ['fire', 'frost', 'bolt', 'drain', 'heal'];
+  // you know any number of spells but only carry a few; swap them at a shrine, add slots with Arcane Focus
+  const spellSlots = () => Math.min(6, 3 + sk('focus'));
+  const activeSpells = () => SP_ORDER.filter(k => P.spells[k] && P.loadout && P.loadout.indexOf(k) >= 0);
+  function tidyLoadout() { if (!P.loadout) P.loadout = []; P.loadout = P.loadout.filter((k, i, a) => P.spells[k] && a.indexOf(k) === i).slice(0, spellSlots()); }
+  function fillLoadout() {
+    tidyLoadout();
+    for (const k of SP_ORDER) if (P.spells[k] && P.loadout.length < spellSlots() && P.loadout.indexOf(k) < 0) P.loadout.push(k);
+  }
   const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f' };
   const SPHELP = { fire: 'On the map: hit a monster, melt ice, light braziers and dark caves, set trees alight. Range 3',
     frost: 'On the map: hit and freeze a monster, put out fires, freeze a lake solid to walk on. Range 3',
@@ -1131,7 +1150,7 @@
     wtxt.push({ x: guy.x, y: guy.y - 26, txt: '+' + (P.hp - b), col: '#7dff8f', t: gt }); burst(guy.x, guy.y - 12, 16, ['#7dff8f', '#ffffff'], 25, -30, 0); hudDirty = true;
   }
   function selectSpell(k) {
-    if (!P.spells[k] || B || S.state !== 'play' || stashOpen || craftOpen) return;
+    if (!P.spells[k] || activeSpells().indexOf(k) < 0 || B || S.state !== 'play' || stashOpen || craftOpen) return;
     if (k === 'heal') { aim = null; castHeal(); return; }
     if (P.mp < SPELLS[k].cost) { toast('Not enough magic for ' + SPELLS[k].name); return; }
     aim = aim === k ? null : k; bagSel = null; hudDirty = true;
@@ -1156,7 +1175,7 @@
     for (const k in r.needs) if (countOf(k, atS) < r.needs[k]) return 'Missing ' + ITEMS[k].name.toLowerCase();
     let freed = 0; for (const k in r.needs) freed += Math.min(r.needs[k], countOf(k, false)) * isize(k);
     if (bagUsed() - freed + isize(r.id) <= P.bagCap) return '';
-    if (atS && stashUsed() + isize(r.id) <= S.stashCap) return '';
+    if (atS && canStash(r.id)) return '';
     return 'No room in your bag';
   }
   function craft(id) {
@@ -1279,7 +1298,7 @@
   // ---------- stash ----------
   function bagToStash(i) {
     const e = P.bag[i]; if (e === undefined) return;
-    if (stashUsed() + esize(e) > S.stashCap) { toast('Your stash is full'); return; }
+    if (!canStash(e)) { toast('Your stash is full'); return; }
     P.bag.splice(i, 1); S.stash.push(e); bagSel = null; hudDirty = true; if (stashOpen) renderStash();
   }
   function stashToBag(i) {
@@ -1294,7 +1313,7 @@
   }
   function unequipToStash(slot) {
     const g = P.eq[slot]; if (!g) return;
-    if (stashUsed() + 2 > S.stashCap) { toast('Your stash is full'); return; }
+    if (!canStash(g)) { toast('Your stash is full'); return; }
     P.eq[slot] = null; S.stash.push(g); clampVitals(); hudDirty = true; renderStash();
   }
   const stashCost = () => 60 + 40 * ((S.stashCap - 40) / 10);
@@ -1346,7 +1365,7 @@
       }
     } else if (type === 'defend') { B.defend = true; P.mp = Math.min(maxMP(), P.mp + 1); blog('You brace yourself. (+1 MP)'); }
     else if (type === 'magic') {
-      const sp = SPELLS[arg], lv = P.spells[arg]; if (!sp || !lv || P.mp < sp.cost) return;
+      const sp = SPELLS[arg], lv = P.spells[arg]; if (!sp || !lv || P.mp < sp.cost || (!TEST && activeSpells().indexOf(arg) < 0)) return;
       P.mp -= sp.cost; stats.spells++; const pw = (1 + .2 * (lv - 1)) * (.9 + .2 * rnd()) * spMul();
       B.spell = { k: arg, t: gt };
       if (arg === 'fire') blog('Fireball burns ' + m.name + ' for ' + hitMon((6 + 2.5 * L) * pw, '#ffb02e') + '.');
@@ -2578,7 +2597,7 @@
     if (shoot) { shoot.t += dt; for (let i = 0; i < 10; i++) { ctx.globalAlpha = (1 - i / 10) * (1 - shoot.t / .7); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(shoot.x + shoot.t * 240 - i * 3), Math.round(shoot.y + shoot.t * 90 - i * 1.1), 1, 1); } ctx.globalAlpha = 1; if (shoot.t > .7) shoot = null; }
 
     let hoverT = null, hoverC = null;
-    const busy = B || stashOpen || craftOpen || skillsOpen || hallOpen;
+    const busy = B || stashOpen || craftOpen || skillsOpen || bookOpen || hallOpen;
     if (sel && (S.state !== 'play' || busy || !(tiles.has(key(sel.q, sel.r)) || isCand(sel.q, sel.r)))) sel = null;
     const hcell = sel || (mouse.x > -900 ? cellAtMouse() : null);
     if (S.state === 'play' && !busy && hcell) { const c = hcell, k = key(c.q, c.r); if (tiles.has(k)) hoverT = tiles.get(k); else if (isCand(c.q, c.r)) hoverC = c; }
@@ -2809,7 +2828,9 @@
     let g = '<h4 id="gearT">GEAR<span>ATK ' + pAtk() + ' · DEF ' + pDef() + '</span></h4><div class="body"><div class="ggrid">';
     for (const [sl, label] of SLOTS) { const it = P.eq[sl]; g += '<div class="gs' + (it ? '' : ' empty') + '" data-g="' + sl + '" title="' + (it ? it.name + ': ' + gearDesc(it) : label + ': empty') + '">' + (it ? img(gearIconURL(it)) : '<span>' + label + '</span>') + '</div>'; }
     $('gear').innerHTML = g + '</div><div id="gearInfo">' + gearInfoHTML() + '</div></div>';
-    const known = SP_ORDER.filter(k => P.spells[k]);
+    tidyLoadout();
+    const known = activeSpells();
+    $('bookSub').textContent = known.length + ' / ' + spellSlots() + ' slots';
     $('spells').innerHTML = known.length ? known.map((k, i) => '<button class="spell' + (P.mp < SPELLS[k].cost ? ' off' : '') + (aim === k ? ' on' : '') + '" data-k="' + k + '" title="' + SPELLS[k].name + ' Lv ' + P.spells[k] + ' (' + SPELLS[k].cost + ' MP, key ' + (i + 1) + '): ' + SPHELP[k] + '"><u>' + (i + 1) + '</u>' + img(ICONURL['sp_' + k]) + '<i>' + SPELLS[k].cost + '</i></button>').join('') : '<div class="nosp">No spells yet.<br>Find rune stones</div>';
     let b = '', used = 0;
     P.bag.forEach((e, i) => { used += esize(e); b += slotHTML(e, 'data-i="' + i + '"').replace('class="slot', 'class="slot' + (bagSel === i ? ' sel' : '')); });
@@ -2842,22 +2863,37 @@
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
     $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); };
     $('skillBtn').onclick = () => { if (B || S.state !== 'play') return; openSkills(); };
+    $('bookBtn').onclick = () => { if (B || S.state !== 'play') return; openBook(); };
     $('spells').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) selectSpell(b.dataset.k); };
     $('gear').onmouseover = (e) => { const c = e.target.closest('[data-g]'), v = c ? c.dataset.g : null; if (v !== gearHover) { gearHover = v; const gi = $('gearInfo'); if (gi) gi.innerHTML = gearInfoHTML(); } };
     $('gear').onclick = (e) => { if (e.target.closest('#gearT')) $('gear').classList.toggle('min'); };
   }
 
+  let stSel = null, stQty = 1;
+  // move n of one item from the stash into the bag, as many as fit
+  function stashTake(id, n) {
+    let got = 0; for (; got < n; got++) { const i = S.stash.indexOf(id); if (i < 0 || !giveItem(id)) break; S.stash.splice(i, 1); }
+    if (got < n) toast(got ? 'Your bag only had room for ' + got : 'Not enough room in your bag'); hudDirty = true; return got; }
   function renderStash() {
     if (TEST || !stashOpen) return;
-    let h = '<h2>SHRINE STASH</h2><div class="note" style="margin:0 0 6px">The same stash waits at every shrine, and it is safe when you die. Click an item to move it.</div>';
+    let h = '<h2>SHRINE STASH</h2><div class="note" style="margin:0 0 6px">The same stash waits at every shrine, and it is safe when you die. Click an item to move it. Click a stack to choose how many to take.</div>';
     h += '<div class="sec"><span>EQUIPPED (click to store)</span></div><div class="rowf">';
     for (const [s, label] of SLOTS) { const g = P.eq[s]; h += g ? slotHTML(g, 'data-un="' + s + '"').replace(' w2', '') : '<div class="slot empty" title="' + label + '"><span class="n" style="opacity:.4">' + label + '</span></div>'; }
     h += '</div><div class="sec"><span>BAG</span><span>' + bagUsed() + ' / ' + P.bagCap + '</span></div><div class="rowf">';
     let used = 0; P.bag.forEach((e, i) => { used += esize(e); h += slotHTML(e, 'data-b="' + i + '"'); }); for (let i = used; i < P.bagCap; i++) h += '<div class="slot empty"></div>';
-    h += '</div><div class="sec"><span>STASH</span><span>' + stashUsed() + ' / ' + S.stashCap + '</span></div><div class="grid">';
-    used = 0; S.stash.forEach((e, i) => { used += esize(e); h += slotHTML(e, 'data-s="' + i + '"', typeof e !== 'string' ? '<span class="eq" data-se="' + i + '">EQUIP</span>' : ''); });
+    h += '</div><div class="sec"><span>STASH (identical items stack, 10 per slot)</span><span>' + stashUsed() + ' / ' + S.stashCap + '</span></div><div class="grid">';
+    used = 0; const cnt = {}, order = [];
+    S.stash.forEach((e, i) => { if (typeof e === 'string') { if (!cnt[e]) { cnt[e] = 0; order.push(e); } cnt[e]++; } else { used += 2; h += slotHTML(e, 'data-s="' + i + '"', '<span class="eq" data-se="' + i + '">EQUIP</span>'); } });
+    for (const id of order) { let left = cnt[id]; while (left > 0) { const n = Math.min(STACK, left); left -= n; used += isize(id);
+      h += slotHTML(id, 'data-st="' + id + '"', n > 1 ? '<span class="eq" style="background:#000c;color:#ffe27a;top:auto;bottom:16px;right:2px">x' + n + '</span>' : '').replace('class="slot', 'class="slot' + (stSel === id ? ' sel' : '')); } }
     for (let i = used; i < S.stashCap; i++) h += '<div class="slot empty"></div>';
-    h += '</div><div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="act" id="stAll">Store all items</button><button class="act alt" id="stCraft">Craft</button>' + (S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +10<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
+    h += '</div>';
+    if (stSel && cnt[stSel] > 1) { const tot = cnt[stSel]; stQty = Math.max(1, Math.min(stQty || 1, tot));
+      h += '<div class="rec" style="margin-top:8px;justify-content:center;flex-wrap:wrap;gap:6px"><b>' + ITEMS[stSel].name + ' x' + tot + '</b><span style="opacity:.8">Take to bag:</span>' +
+        '<button class="act" data-sq="-1" style="padding:2px 10px">&minus;</button><b style="min-width:28px;text-align:center">' + stQty + '</b><button class="act" data-sq="1" style="padding:2px 10px">+</button>' +
+        '<button class="act" data-sg="qty">Take ' + stQty + '</button><button class="act" data-sg="half">Half</button><button class="act" data-sg="all">All</button></div>'; }
+    else if (stSel) stSel = null;
+    h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="act" id="stAll">Store all items</button><button class="act alt" id="stCraft">Craft</button>' + (S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +10<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
     h += '<div class="note">Gear and big tools (pickaxe, ladder, raft) take 2 slots. Grow your bag with pack upgrades (3 hides + rope), merchants, and bosses. At a shrine, crafting can use materials from your stash.</div>';
     $('stashBox').innerHTML = h;
   }
@@ -2866,13 +2902,44 @@
     if (t.id === 'stClose') return closeStash();
     if (t.closest('#stExp')) { const c = stashCost(); if (P.gold < c) { toast('You need ' + c + ' gold'); return; } P.gold -= c; S.stashCap += 10; toast('Your stash grows to ' + S.stashCap + ' slots'); hudDirty = true; return renderStash(); }
     if (t.id === 'stCraft') { closeStash(); return openCraft(); }
-    if (t.id === 'stAll') { for (let i = P.bag.length - 1; i >= 0; i--) if (typeof P.bag[i] === 'string' && stashUsed() + esize(P.bag[i]) <= S.stashCap) S.stash.push(P.bag.splice(i, 1)[0]); hudDirty = true; return renderStash(); }
+    if (t.id === 'stAll') { for (let i = P.bag.length - 1; i >= 0; i--) if (typeof P.bag[i] === 'string' && canStash(P.bag[i])) S.stash.push(P.bag.splice(i, 1)[0]); hudDirty = true; return renderStash(); }
     const se = t.closest('[data-se]'); if (se) return stashEquip(+se.dataset.se);
     const un = t.closest('[data-un]'); if (un) return unequipToStash(un.dataset.un);
     const b = t.closest('[data-b]'); if (b) { bagToStash(+b.dataset.b); return renderStash(); }
+    const sq = t.closest('[data-sq]'); if (sq) { stQty += +sq.dataset.sq; return renderStash(); }
+    const sg = t.closest('[data-sg]'); if (sg && stSel) { const tot = S.stash.filter(x => x === stSel).length, m = sg.dataset.sg;
+      stashTake(stSel, m === 'qty' ? stQty : m === '1' ? 1 : m === 'half' ? Math.max(1, Math.floor(tot / 2)) : tot); stQty = 1; return renderStash(); }
+    const st = t.closest('[data-st]'); if (st) { const id = st.dataset.st, tot = S.stash.filter(x => x === id).length;
+      if (tot <= 1) { stashTake(id, 1); stSel = null; } else { stSel = stSel === id ? null : id; stQty = 1; } return renderStash(); }
     const s = t.closest('[data-s]'); if (s) return stashToBag(+s.dataset.s);
   };
 
+  // ---------- spellbook ----------
+  let bookOpen = false;
+  function openBook() { if (TEST || B || S.state !== 'play') return; bookOpen = true; $('spellbook').style.display = 'flex'; renderBook(); }
+  function closeBook() { bookOpen = false; $('spellbook').style.display = 'none'; hudDirty = true; }
+  function renderBook() {
+    if (TEST || !bookOpen) return;
+    tidyLoadout();
+    const can = atShrine(), n = spellSlots(), known = SP_ORDER.filter(k => P.spells[k]);
+    let h = '<h2>SPELLBOOK</h2><div class="note" style="margin:0 0 8px">' + (can ? 'You are at a shrine: choose which spells to carry.' : 'You can swap spells at any shrine.') + ' Slots: <span class="sppill">' + n + ' / 6</span>' + (n < 6 ? ' (Arcane Focus skill adds more)' : '') + '</div><div class="rowf" style="justify-content:center">';
+    for (let i = 0; i < 6; i++) { const k = P.loadout[i];
+      h += i >= n ? '<div class="slot empty" title="Locked: learn Arcane Focus"><span class="n" style="opacity:.5">&#128274;</span></div>' : k ? '<div class="slot" data-bu="' + k + '" title="' + SPELLS[k].name + (can ? ' (click to put away)' : '') + '">' + img(ICONURL['sp_' + k]) + '<span class="n">' + SPELLS[k].name + '</span></div>' : '<div class="slot empty"><span class="n" style="opacity:.5">free</span></div>'; }
+    h += '</div><div class="sec"><span>SPELLS YOU KNOW</span><span>' + known.length + '</span></div>';
+    if (!known.length) h += '<div class="note">No spells yet. Find rune stones.</div>';
+    for (const k of known) { const on = P.loadout.indexOf(k) >= 0, full = !on && P.loadout.length >= n;
+      h += '<div class="rec">' + img(ICONURL['sp_' + k]) + '<span class="grow"><b>' + SPELLS[k].name + '</b> Lv ' + P.spells[k] + ' &middot; ' + SPELLS[k].cost + ' MP<br>' + SPHELP[k] + '</span>' +
+        '<button class="act' + ((!can || full) && !on ? ' off' : '') + (can ? '' : ' off') + '" data-bk="' + k + '">' + (on ? 'Put away' : 'Carry') + '<small>' + (!can ? 'shrine only' : full ? 'slots full' : on ? 'equipped' : 'free slot') + '</small></button></div>'; }
+    h += '<div style="text-align:center;margin-top:8px"><button class="act" id="bkClose">Close</button></div>';
+    $('bookBox').innerHTML = h;
+  }
+  if (!TEST) $('bookBox').onclick = (e) => {
+    if (e.target.id === 'bkClose') return closeBook();
+    const t = e.target.closest('[data-bk],[data-bu]'); if (!t || !atShrine()) return;
+    const k = t.dataset.bk || t.dataset.bu, i = P.loadout.indexOf(k);
+    if (i >= 0) P.loadout.splice(i, 1); else if (P.loadout.length < spellSlots()) P.loadout.push(k); else return;
+    hudDirty = true; renderBook();
+  };
   let skillsOpen = false;
   let awakenT = 0;
   function showAwaken() {
@@ -2956,11 +3023,11 @@
     let h = '';
     if (B.turn === 'done') h = B.result === 'fled' ? '' : btn('Continue', '', 'close');
     else if (B.turn === 'enemy') h = '<div class="small">...</div>';
-    else if (B.menu === 'magic') { for (const k in P.spells) h += btn(SPELLS[k].name, SPELLS[k].cost + ' MP · ' + SPELLS[k].desc, 'magic', k, P.mp < SPELLS[k].cost); h += btn('Back', '', 'menu', 'main'); }
+    else if (B.menu === 'magic') { for (const k of activeSpells()) h += btn(SPELLS[k].name, SPELLS[k].cost + ' MP · ' + SPELLS[k].desc, 'magic', k, P.mp < SPELLS[k].cost); h += btn('Back', '', 'menu', 'main'); }
     else if (B.menu === 'items') { P.bag.forEach((id, i) => { if (battleUsable(id)) h += btn('<img class="px" src="' + ICONURL[id] + '" style="width:18px;height:18px;vertical-align:middle"> ' + ITEMS[id].name, ITEMS[id].d, 'item', i); }); h += btn('Back', '', 'menu', 'main'); }
     else {
       const ch = clamp(50 + gsum('flee') + 10 * sk('flee') - (m.elite ? 15 : 0), 15, 95);
-      h = btn('Attack', '', 'attack') + btn('Defend', P.eq.shield ? 'block 70%' : 'block 55%', 'defend') + btn('Magic', Object.keys(P.spells).length ? '' : 'none known', 'menu', 'magic', !Object.keys(P.spells).length) +
+      h = btn('Attack', '', 'attack') + btn('Defend', P.eq.shield ? 'block 70%' : 'block 55%', 'defend') + btn('Magic', activeSpells().length ? '' : 'none equipped', 'menu', 'magic', !activeSpells().length) +
         btn('Items', '', 'menu', 'items', !P.bag.some(battleUsable)) + (m.boss ? btn('Run', 'no escape!', 'run', '', true) : btn('Run', ch + '% chance', 'run'));
     }
     $('bBtns').innerHTML = h; hudDirty = true;
@@ -3005,7 +3072,7 @@
     }
   }
   function tapAt(touch) {
-    if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || hallOpen) { sel = null; return; }
+    if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || bookOpen || hallOpen) { sel = null; return; }
     const c = cellAtMouse();
     if (!touch) { act(c, false); return; }
     if (!(tiles.has(key(c.q, c.r)) || isCand(c.q, c.r))) { sel = null; return; }
@@ -3056,11 +3123,11 @@
   window.addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.key === '+' || e.key === '=') { zoomBy(1); return; } if (e.key === '-' || e.key === '_') { zoomBy(-1); return; } if (e.key === '0') { zoomReset(); return; }
-    if (/^[1-5]$/.test(e.key)) { const known = SP_ORDER.filter(k => P.spells[k]); const k = known[+e.key - 1]; if (k) selectSpell(k); return; }
-    if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
+    if (/^[1-6]$/.test(e.key)) { const known = activeSpells(); const k = known[+e.key - 1]; if (k) selectSpell(k); return; }
+    if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen && !bookOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
     if ((e.key === 'c' || e.key === 'C') && !B && S.state === 'play' && !stashOpen && !skillsOpen) { craftOpen ? closeCraft() : openCraft(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;
-    if (e.key === 'Escape') { if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
+    if (e.key === 'Escape') { if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
   if (!TEST) $('inspect').addEventListener('click', (e) => { if (e.target.closest('[data-ieq]')) { const g = inspList[inspIdx], ct = curTile(), i = ct ? ct.loot.indexOf(g) : -1;
       if (i >= 0) { equipFrom(ct, i); if (!ct.loot.length) ct.grave = false; toast('Equipped ' + g.name); } else if (P.bag.indexOf(g) >= 0) equipBag(P.bag.indexOf(g)); closeInspect(); hudDirty = true; return; }
