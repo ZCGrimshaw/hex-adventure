@@ -535,7 +535,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 18;
+  const BUILD = 19;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -1010,8 +1010,8 @@
       if (it.kind === 'item') A.push({ label: 'Take ' + ITEMS[it.id].name, sub: ITEMS[it.id].d, off: full(isize(it.id)), run() { giveItem(it.id); drop(); } });
       else {
         const cur = it.slot === 'ring' ? (gpower(P.eq.ring1) <= gpower(P.eq.ring2) ? P.eq.ring1 : P.eq.ring2) : P.eq[it.slot];
-        A.push({ label: 'Equip ' + it.name, sub: gearDesc(it) + (cur ? ' (now: ' + gearDesc(cur) + ')' : ''), better: gpower(it) > gpower(cur), run() { equipFrom(t, t.loot.indexOf(it)); if (!t.loot.length) t.grave = false; } });
-        A.push({ label: 'Carry ' + it.name, sub: 'uses 2 bag slots (stash it later)', off: full(2), run() { giveItem(it); drop(); } });
+        A.push({ label: 'Equip ' + it.name, sub: gearDesc(it) + (cur ? ' (now: ' + gearDesc(cur) + ')' : ''), better: gpower(it) > gpower(cur), insp: it, list: t.loot.filter(x => x.kind === 'gear'), run() { equipFrom(t, t.loot.indexOf(it)); if (!t.loot.length) t.grave = false; } });
+        A.push({ label: 'Carry ' + it.name, sub: 'uses 2 bag slots (stash it later)', off: full(2), insp: it, list: t.loot.filter(x => x.kind === 'gear'), run() { giveItem(it); drop(); } });
       }
     });
     return A;
@@ -1164,7 +1164,7 @@
     const cancel = { label: 'Cancel', sub: '', run() {} };
     if (typeof e !== 'string') {
       const cur = P.eq[slotFor(e)];
-      O.push({ label: 'Equip ' + e.name, sub: gearDesc(e) + (cur ? ' (now: ' + gearDesc(cur) + ')' : ''), better: gpower(e) > gpower(cur), run() { equipBag(P.bag.indexOf(e)); } });
+      O.push({ label: 'Equip ' + e.name, sub: gearDesc(e) + (cur ? ' (now: ' + gearDesc(cur) + ')' : ''), better: gpower(e) > gpower(cur), insp: e, list: P.bag.filter(x => typeof x !== 'string'), run() { equipBag(P.bag.indexOf(e)); } });
       if (atShrine()) O.push({ label: 'Put in stash', sub: '2 slots', hot: true, run() { bagToStash(P.bag.indexOf(e)); } });
       O.push({ label: 'Drop', sub: 'leave it on this hex', run() { P.bag.splice(P.bag.indexOf(e), 1); curTile().loot.push(e); toast('Dropped ' + e.name); } });
       O.push(cancel); return O;
@@ -2746,7 +2746,9 @@
   let gearHover = null, miniT = 0;
   // right-click gear lying on a tile: big picture plus a comparison with what you wear
   const STATS = [['atk','Attack'],['def','Defense'],['hp','HP'],['mp','MP'],['crit','Crit %'],['flee','Flee %']];
-  function inspectGear(g) {
+  let inspList = [], inspIdx = 0;
+  function inspectGear(g, list) {
+    inspList = list && list.length ? list : [g]; inspIdx = Math.max(0, inspList.indexOf(g));
     const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
     const card = (it, title) => '<div style="flex:1;min-width:150px"><div class="dim" style="font-size:12px;letter-spacing:1px">' + title + '</div>' +
       (it ? '<img src="' + gearIconURL(it) + '" style="width:112px;height:112px;image-rendering:pixelated;margin:6px 0;filter:drop-shadow(0 0 8px ' + it.col + '88)"><div style="font-weight:700;color:' + it.col + '">' + it.name + '</div>'
@@ -2757,12 +2759,13 @@
       const d = a - b, col = d > 0 ? '#7dff8f' : d < 0 ? '#ff7a6a' : '#9ab';
       rows += '<tr><td style="text-align:left">' + lab + '</td><td>' + (old ? b : '-') + '</td><td><b>' + a + '</b></td><td style="color:' + col + ';font-weight:700">' + (d > 0 ? '+' : '') + d + '</td></tr>';
     }
-    $('inspectBox').innerHTML = '<h2>' + sl.toUpperCase() + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + card(g, 'ON THE GROUND') + '</div>' +
+    $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + card(g, 'ON THE GROUND') + '</div>' +
       '<table style="width:100%;margin-top:8px;font-size:14px;text-align:center"><tr class="dim"><th style="text-align:left"></th><th>Now</th><th>This</th><th>Change</th></tr>' + rows + '</table>' +
-      '<div class="dim" style="margin-top:8px;font-size:12px">Click anywhere or press Esc to close</div>';
+      '<div class="dim" style="margin-top:8px;font-size:12px">' + (inspList.length > 1 ? 'Use the arrows or Left / Right keys to flip through items. ' : '') + 'Click outside or press Esc to close</div>';
     $('inspect').style.display = 'flex'; inspectOpen = true;
   }
   let inspectOpen = false;
+  function inspectCycle(d) { if (inspList.length < 2) return; inspIdx = (inspIdx + d + inspList.length) % inspList.length; inspectGear(inspList[inspIdx], inspList); }
   function closeInspect() { inspectOpen = false; $('inspect').style.display = 'none'; }
   function gearInfoHTML() {
     const sl = gearHover; if (!sl) return '<span class="dim">Hover a slot for details</span>';
@@ -3009,7 +3012,7 @@
   canvas.addEventListener('pointerdown', (e) => {
     setMouse(e);
     if (e.button === 2) { if (aim && S.state === 'play' && !B) { aim = null; hudDirty = true; return; }
-      if (S.state === 'play' && !B && !TEST) { const c = cellAtMouse(), t = c && tiles.get(key(c.q, c.r)), g = t && t.loot && t.loot.find(x => x.kind === 'gear'); if (g) inspectGear(g); } return; }
+      if (S.state === 'play' && !B && !TEST) { const c = cellAtMouse(), t = c && tiles.get(key(c.q, c.r)), g = t && t.loot && t.loot.find(x => x.kind === 'gear'); if (g) inspectGear(g, t.loot.filter(x => x.kind === 'gear')); } return; }
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (ptrs.size === 1) gest = { id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false, pinch: false, touch: e.pointerType !== 'mouse' };
@@ -3037,7 +3040,16 @@
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.key === 'Escape') { if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
-  if (!TEST) $('inspect').addEventListener('click', closeInspect);
+  if (!TEST) $('inspect').addEventListener('click', (e) => { const b = e.target.closest('[data-ic]'); if (b) return inspectCycle(+b.dataset.ic); if (!e.target.closest('.bx')) closeInspect(); });
+  window.addEventListener('keydown', (e) => { if (!inspectOpen) return; if (e.key === 'ArrowLeft') inspectCycle(-1); else if (e.key === 'ArrowRight') inspectCycle(1); });
+  // right-click (or long-press on touch) an Equip / Carry button to compare that piece
+  if (!TEST) { const ac = $('actions'); let lp = null;
+    const open = (el) => { const b = el && el.closest('[data-a]'), a = b && renderHud.A && renderHud.A[+b.dataset.a]; if (a && a.insp) { inspectGear(a.insp, a.list); return true; } return false; };
+    ac.addEventListener('contextmenu', (e) => { if (open(e.target)) e.preventDefault(); });
+    ac.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') return; const el = e.target; lp = setTimeout(() => { lp = null; if (open(el)) ac.dataset.lp = '1'; }, 450); });
+    const clr = () => { if (lp) { clearTimeout(lp); lp = null; } };
+    ac.addEventListener('pointerup', clr); ac.addEventListener('pointercancel', clr); ac.addEventListener('pointermove', clr);
+    ac.addEventListener('click', (e) => { if (ac.dataset.lp) { ac.dataset.lp = ''; e.stopImmediatePropagation(); e.preventDefault(); } }, true); }
   window.addEventListener('pagehide', () => saveNow());
   if (!TEST) document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
   function resize() {
