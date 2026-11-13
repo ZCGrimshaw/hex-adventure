@@ -76,6 +76,8 @@
   #over table { width:100%; border-collapse:collapse; font-size:14px; margin:8px 0 12px; }
   #over td { padding:3px 6px; border-bottom:1px solid #22332a; font-size:12px; } #over td:nth-child(2), #over td:nth-child(4) { text-align:right; font-weight:700; } #over td:nth-child(3) { padding-left:16px; } #over .bx { width:min(680px,95vw); }
   :root { --uz: 1; }
+  #upd { position:fixed; left:50%; top:12px; transform:translateX(-50%); z-index:30; zoom:var(--uz); background:linear-gradient(#2a2410,#14100a); border:2px solid #ffd23a; border-radius:8px; padding:10px 14px; display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; box-shadow:0 0 18px #ffd23a55; font-size:12px; max-width:420px; }
+  #upd b { color:#ffe14a; font-size:14px; } #upd .act { min-width:0; } #upd span { font-weight:400; }
   .hog { width:100%; border-collapse:collapse; font-size:13px; margin:6px 0; }
   .hog th { text-align:left; font-size:11px; color:#8fa898; font-weight:700; padding:3px 6px; border-bottom:1px solid #45624f; }
   .hog td { padding:4px 6px; border-bottom:1px solid #1e2c24; font-weight:400; } .hog td.n { text-align:right; font-weight:700; } .hog th.n { text-align:right; }
@@ -456,10 +458,18 @@
     return { v: 9, at: Date.now(), gt, P, S, stats, tiles, mons, pet, guy: { q: guy.q, r: guy.r, face: guy.face },
       battle: B && (B.result === null || B.result === 'dead') ? { q: B.m.q, r: B.m.r, dying: B.result === 'dead' } : null };
   }
-  function saveNow() { if (!canSave() || !S || S.state !== 'play') return; saveWant = false; saveT = 0; try { idbDo('readwrite', st => st.put(snapshot(), 'run')).catch(() => {}); } catch (e) {} }
+  function saveNow() { if (!canSave() || !S || S.state !== 'play') return Promise.resolve(); saveWant = false; saveT = 0; try { return idbDo('readwrite', st => st.put(snapshot(), 'run')).catch(() => {}); } catch (e) { return Promise.resolve(); } }
   function saveSoon() { saveWant = true; }
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
+  // older saves keep loading after updates: any field a newer version added gets its starting value
+  function migrate(d) {
+    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false }, d.S);
+    d.stats = Object.assign(freshStats(), d.stats);
+    return d;
+  }
   function restoreRun(d) {
+    d = migrate(d);
     gt = d.gt || 0; P = d.P; S = d.S; stats = d.stats; tiles = d.tiles; mons = d.mons; pet = d.pet || null;
     particles = []; B = null; bagSel = null; aim = null;
     const w = toWorld(d.guy.q, d.guy.r);
@@ -491,6 +501,25 @@
     el.innerHTML = '<div class="note">Loading the Hall of Greats...</div>';
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
+  // ---------- live updates: spot a new version, save, reload, carry on ----------
+  const BUILD = 11;
+  let updT = 0, updShown = false;
+  function checkUpdate() {
+    if (TEST || updShown || location.protocol === 'file:') return;
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j && +j.build > BUILD && !updShown) showUpdate(j); }).catch(() => {});
+  }
+  function showUpdate(j) {
+    updShown = true;
+    const el = document.createElement('div'); el.id = 'upd';
+    el.innerHTML = '<b>A new version of Hex Adventure is ready</b>' + (j.notes ? '<span>' + esc(j.notes) + '</span>' : '') + '<span>Your run is saved and carries on right where you are.</span><button class="act buy" id="updGo">Save &amp; update</button><button class="act off" id="updLater">Later</button>';
+    document.body.appendChild(el);
+    $('updLater').onclick = () => { el.remove(); updShown = false; updT = -600; };
+    $('updGo').onclick = () => {
+      if (B) { toast('Finish your battle first, then update'); return; }
+      $('updGo').textContent = 'Saving...';
+      saveNow().then(() => setTimeout(() => location.replace(location.pathname + '?v=' + j.build), 300));
+    };
+  }
   let hallOpen = false, abandonArm = false;
   function openHall() {
     if (TEST) return; hallOpen = true; abandonArm = false; $('hall').style.display = 'flex';
@@ -505,12 +534,13 @@
     if (ab) { if (!abandonArm) { abandonArm = true; ab.innerHTML = 'Tap again to end it<small>this cannot be undone</small>'; return; } closeHall(); gameOver('ended'); }
   };
 
+  const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
   function newGame(noOnline) {
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
     S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
-    stats = { kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 };
+    stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
     guy = { q: 0, r: 0, x: 0, y: 0, mv: null, target: null, pending: null, prev: null, walkT: 0, face: 1 };
@@ -2163,6 +2193,7 @@
     if (flash > 0) { ctx.fillStyle = 'rgba(255,255,255,' + flash.toFixed(2) + ')'; ctx.fillRect(0, 0, W, H); }
     if (hudDirty) renderHud();
     saveT += dt; if ((saveWant && saveT > 1.5) || saveT > 6) saveNow();
+    updT += dt; if (updT > 150) { updT = 0; checkUpdate(); }
     if ((miniT += dt) > .2) { miniT = 0; drawMini(); }
     if (B) drawBattle();
     requestAnimationFrame(frame);
@@ -2447,6 +2478,7 @@
   if (!TEST) { buildIcons(); bctx.imageSmoothingEnabled = false; }
   resize(); newGame(true);
   loadSaved().then(found => { if (!found) startOnline(); });
+  setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   window.__g3 = { get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
