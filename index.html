@@ -158,6 +158,7 @@
   <div id="bLog"></div>
   <div id="bBtns"></div>
 </div></div>
+<div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
 <div id="skills" class="modal"><div class="bx" id="skillsBox" style="width:min(860px,96vw)"></div></div>
 <div id="craft" class="modal"><div class="bx" id="craftBox"></div></div>
@@ -507,7 +508,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 16;
+  const BUILD = 17;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -669,6 +670,7 @@
     return t;
   }
 
+  const caveFull = () => !!S.cave && S.cave.n >= S.cave.max;
   const mistCap = () => !S.cave && !!S.boss && !S.boss.dead && S.revealed >= S.boss.cap;
   const curD = () => S.cave ? S.cave.d + S.cave.n : S.revealed;
   function addGems(n, why) {
@@ -2558,8 +2560,8 @@
     for (const t of tiles.values()) { const w = toWorld(t.q, t.r), sx = w.x + ox, sy = w.y + oy; if (sx < -50 || sx > W + 50 || sy < -60 || sy > H + 70) continue; list.push({ t, w, y: w.y }); }
     for (const m of mons.values()) list.push({ m, y: m.y + .3 });
     list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 });
-    if (S.state === 'play' && !guy.mv) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); }
-    if (hoverC && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
+    if (S.state === 'play' && !guy.mv && !caveFull()) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); }
+    if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
     list.sort((a, b) => a.y - b.y);
     for (const it of list) {
       if (it.guy) drawGuy(ox, oy);
@@ -2715,6 +2717,26 @@
     return '<div class="slot' + (w2 ? ' w2' : '') + '" ' + attrs + ' title="' + nm + ': ' + (typeof e === 'string' ? ITEMS[e].d : gearDesc(e)) + '">' + img(entryURL(e)) + '<span class="n">' + nm + '</span>' + (extra || '') + '</div>';
   }
   let gearHover = null, miniT = 0;
+  // right-click gear lying on a tile: big picture plus a comparison with what you wear
+  const STATS = [['atk','Attack'],['def','Defense'],['hp','HP'],['mp','MP'],['crit','Crit %'],['flee','Flee %']];
+  function inspectGear(g) {
+    const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
+    const card = (it, title) => '<div style="flex:1;min-width:150px"><div class="dim" style="font-size:12px;letter-spacing:1px">' + title + '</div>' +
+      (it ? '<img src="' + gearIconURL(it) + '" style="width:112px;height:112px;image-rendering:pixelated;margin:6px 0;filter:drop-shadow(0 0 8px ' + it.col + '88)"><div style="font-weight:700;color:' + it.col + '">' + it.name + '</div>'
+        : '<div class="dim" style="height:150px;display:flex;align-items:center;justify-content:center">Nothing equipped</div>') + '</div>';
+    let rows = '';
+    for (const [k, lab] of STATS) {
+      const a = g[k] || 0, b = old ? (old[k] || 0) : 0; if (!a && !b) continue;
+      const d = a - b, col = d > 0 ? '#7dff8f' : d < 0 ? '#ff7a6a' : '#9ab';
+      rows += '<tr><td style="text-align:left">' + lab + '</td><td>' + (old ? b : '-') + '</td><td><b>' + a + '</b></td><td style="color:' + col + ';font-weight:700">' + (d > 0 ? '+' : '') + d + '</td></tr>';
+    }
+    $('inspectBox').innerHTML = '<h2>' + sl.toUpperCase() + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + card(g, 'ON THE GROUND') + '</div>' +
+      '<table style="width:100%;margin-top:8px;font-size:14px;text-align:center"><tr class="dim"><th style="text-align:left"></th><th>Now</th><th>This</th><th>Change</th></tr>' + rows + '</table>' +
+      '<div class="dim" style="margin-top:8px;font-size:12px">Click anywhere or press Esc to close</div>';
+    $('inspect').style.display = 'flex'; inspectOpen = true;
+  }
+  let inspectOpen = false;
+  function closeInspect() { inspectOpen = false; $('inspect').style.display = 'none'; }
   function gearInfoHTML() {
     const sl = gearHover; if (!sl) return '<span class="dim">Hover a slot for details</span>';
     const it = P.eq[sl], lab = SLOTS.find(x => x[0] === sl)[1];
@@ -2946,7 +2968,8 @@
   canvas.addEventListener('pointerleave', () => { mouse.x = mouse.y = -999; });
   canvas.addEventListener('pointerdown', (e) => {
     setMouse(e);
-    if (e.button === 2) { if (aim && S.state === 'play' && !B) { aim = null; hudDirty = true; } return; }
+    if (e.button === 2) { if (aim && S.state === 'play' && !B) { aim = null; hudDirty = true; return; }
+      if (S.state === 'play' && !B && !TEST) { const c = cellAtMouse(), t = c && tiles.get(key(c.q, c.r)), g = t && t.loot && t.loot.find(x => x.kind === 'gear'); if (g) inspectGear(g); } return; }
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (ptrs.size === 1) gest = { id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false, pinch: false, touch: e.pointerType !== 'mouse' };
@@ -2972,8 +2995,9 @@
     if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
     if ((e.key === 'c' || e.key === 'C') && !B && S.state === 'play' && !stashOpen && !skillsOpen) { craftOpen ? closeCraft() : openCraft(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;
-    if (e.key === 'Escape') { if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
+    if (e.key === 'Escape') { if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
+  if (!TEST) $('inspect').addEventListener('click', closeInspect);
   window.addEventListener('pagehide', () => saveNow());
   if (!TEST) document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
   function resize() {
