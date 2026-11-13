@@ -236,19 +236,26 @@
     ckey:    { name: 'Crystal key', d: 'Opens a crystal door' },
     shroom:  { name: 'Glowcap', d: 'Eat: a little health and magic' },
     hide:    { name: 'Animal hide', d: 'Crafting: 3 hides + rope make a bigger pack' },
+    bridge:  { name: 'Bridge', d: 'Spans a chasm. Use it next to one', size: 2 },
     pack:    { name: 'Pack upgrade', d: 'Use: +1 bag slot for good (max 12)' },
   };
   const RECIPES = [
+    // basics are always open (the boss gates and first puzzles need them); the rest unlock with Artisan / Alchemy skill ranks
     { id: 'rope', needs: { vine: 2 } },
     { id: 'torch', needs: { wood: 1, flint: 1 } },
+    { id: 'bridge', needs: { wood: 2, vine: 1 } },
     { id: 'hpot', needs: { berries: 1, water: 1 } },
     { id: 'bomb', needs: { flint: 1, stone: 1, iron: 1 } },
-    { id: 'pickaxe', needs: { wood: 1, iron: 2 } },
-    { id: 'ladder', needs: { wood: 2, rope: 1 } },
-    { id: 'raft', needs: { wood: 3, rope: 1 } },
-    { id: 'ckey', needs: { crystal: 3 } },
-    { id: 'pack', needs: { hide: 3, rope: 1 } },
+    { id: 'pickaxe', needs: { wood: 1, iron: 2 }, skill: ['artisan', 1] },
+    { id: 'ladder', needs: { wood: 2, rope: 1 }, skill: ['artisan', 1] },
+    { id: 'raft', needs: { wood: 3, rope: 1 }, skill: ['artisan', 2] },
+    { id: 'ckey', needs: { crystal: 3 }, skill: ['artisan', 2] },
+    { id: 'pack', needs: { hide: 3, rope: 1 }, skill: ['artisan', 3] },
+    { id: 'mpot', needs: { water: 1, crystal: 1 }, skill: ['alchemy', 1] },
   ];
+  const CRAFTTABS = [['all', 'All'], ['wood', 'Wood'], ['vine', 'Rope & vine'], ['mine', 'Stone & iron'], ['crystal', 'Crystal'], ['food', 'Food & water'], ['hide', 'Hide']];
+  const CRAFTMATS = { wood: 'wood', rope: 'vine', vine: 'vine', stone: 'mine', iron: 'mine', flint: 'mine', crystal: 'crystal', berries: 'food', water: 'food', hide: 'hide' };
+  const recipeTabs = (r) => { const t = new Set(); for (const k in r.needs) if (CRAFTMATS[k]) t.add(CRAFTMATS[k]); return t; };
   const SPELLS = {
     fire:  { name: 'Fireball', cost: 4, d: 0,  desc: 'ignores armor' },
     heal:  { name: 'Heal', cost: 4, d: 0,  desc: 'restores health' },
@@ -300,7 +307,7 @@
   const MIMIC = { n: 'Mimic', s: 'mimic', c: ['#8a5a2a','#ffd23a'], d: 0, hp: 1.2, atk: 1.2, def: 1, t: 'double' };
   const TRAITS = { double: 'strikes twice', dodge: 'dodges attacks', charge: 'winds up huge hits (Defend!)', drain: 'drains magic', regen: 'regenerates' };
   // recipes revealed by touching a blocker
-  const NEEDS = { wall: ['bomb'], cave: ['torch'], boulder: ['pickaxe'], cliff: ['rope', 'ladder'], lake: ['rope', 'raft'], cdoor: ['ckey'] };
+  const NEEDS = { chasm: ['bridge'], wall: ['bomb'], cave: ['torch'], boulder: ['pickaxe'], cliff: ['rope', 'ladder'], lake: ['rope', 'raft'], cdoor: ['ckey'] };
 
   // =====================================================
   //  PIXEL ART MAPS
@@ -346,6 +353,7 @@
     sp_bolt: [[".....yy...","....yy....","...yy.....","..yyyyy...","....yy....","...yy.....","..yy......",".y........"], { y: '#ffe14a' }],
     sp_drain: [["....p.....","...ppp....","..ppPpp...",".ppPPppp..",".pPpppppp.",".ppppppp..","..ppppp..."], { p: '#a050e0', P: '#e0b0ff' }],
     sp_heal: [["...ggg....","...gGg....","gggGGGggg.","gGGGGGGGg.","gggGGGggg.","...gGg....","...ggg...."], { g: '#2fa84a', G: '#9affb0' }],
+    bridge: [["..........","bBbBbBbBbB","bBbBbBbBbB","rr......rr","r........r",".........."], { b: '#8a5a2a', B: '#b07840', r: '#e0c890' }],
     hide: [["..h....h..",".hhhhhhhh.","..hHhhhh..","..hhhhHh..",".hhhhhhhh.","..h....h.."], { h: '#a0703a', H: '#d8a868' }],
     pack: [["...ssss...","..s....s..",".pppppppp.",".pPPppppp.",".pppyyppp.",".pppyyppp.",".pppppppp.","..pppppp.."], { s: '#6a4420', p: '#8a5a2a', P: '#b07a40', y: '#ffd23a' }],
     gem: [["....w.....","...cMc....","..cMWMc...",".cMMWMMc..","cMMMWMMMc.",".mMMMMMm..","..mmMmm...","...mmm....","....m....."], { c: '#5ad8ff', m: '#9a3ad8', M: '#e07aff', W: '#ffffff', w: '#ffffff' }],
@@ -381,12 +389,14 @@
     { id: 'power', br: 1, name: 'Spell Power', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% spell damage and healing' },
     { id: 'flow', br: 1, name: 'Mana Flow', max: 3, cost: 1, d: (r) => '+' + r + ' extra magic for every 2 tiles you reveal' },
     { id: 'reach', br: 1, name: 'Long Reach', max: 2, cost: 2, d: (r) => 'map spells reach ' + Math.min(8, 3 + r) + ' tiles' },
+    { id: 'alchemy', br: 1, name: 'Alchemy', max: 1, cost: 1, d: (r) => 'craft magic potions from water and a crystal shard' },
     { id: 'ward', br: 1, name: 'Arcane Ward', max: 3, cost: 2, d: (r) => 'take ' + Math.min(75, 8 * r) + '% less damage while you have magic left' },
     { id: 'scav', br: 2, name: 'Scavenger', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% gold from everything' },
     { id: 'luck', br: 2, name: 'Lucky Finds', max: 3, cost: 1, d: (r) => '+' + 12 * r + '% chance of extra gear in chests' },
     { id: 'mule', br: 2, name: 'Pack Mule', max: 2, cost: 2, d: (r) => '+' + Math.min(r, 8) + ' bag slots (bag can reach 14)' },
     { id: 'flee', br: 2, name: 'Fleet Foot', max: 3, cost: 1, d: (r) => '+' + 10 * r + '% chance to run from battle' },
     { id: 'trap', br: 2, name: 'Trap Sense', max: 2, cost: 1, d: (r) => r >= 2 ? 'traps cannot hurt you' : 'traps do half damage' },
+    { id: 'artisan', br: 2, name: 'Artisan', max: 3, cost: 1, d: (r) => ['', 'craft pickaxes and ladders', 'also craft rafts and crystal keys', 'also craft pack upgrades'][Math.min(r, 3)] },
     { id: 'gems', br: 2, name: 'Gem Hunter', max: 1, cost: 3, d: (r) => 'more space gem veins in caves, +1 gem from every guardian and boss' },
   ];
   const BRANCH = [['WARRIOR', '#ff8a6a'], ['MAGE', '#b89aff'], ['EXPLORER', '#7dff8f']];
@@ -438,16 +448,16 @@
   const HINT = {
     wall: 'A solid rock wall. A bomb might open it... (craft: flint + stone + iron ore)',
     bear: 'The bear growls and will not budge. It looks hungry... maybe a fish?',
-    chasm: 'A deep chasm. Two pieces of wood could make a bridge',
+    chasm: 'A deep chasm. Use 2 wood next to it, or craft a Bridge (press C: 2 wood + vine)',
     burning: 'Someone is trapped in the flames! Water could put it out',
     blaze: 'Wildfire! Water would put it out',
     ice: 'A solid block of ice. Fire would melt it: a Fireball, or a campfire made with wood',
     vault: 'A locked vault. You need an old key',
     cave: 'Pitch black inside. A torch would light the way (craft: wood + flint)',
-    boulder: 'A huge boulder. A pickaxe could smash it (craft: wood + 2 iron ore)',
-    cliff: 'A sheer cliff. A ladder would reach the top (craft: 2 wood + rope, rope = 2 vines)',
-    lake: 'Deep water. A raft could cross it (craft: 3 wood + rope, rope = 2 vines)',
-    cdoor: 'A humming crystal door. A crystal key would fit (craft: 3 crystal shards)',
+    boulder: 'A huge boulder. A pickaxe could smash it (craft: wood + 2 iron ore, needs the Artisan skill)',
+    cliff: 'A sheer cliff. A ladder would reach the top (craft: 2 wood + rope, needs Artisan skill rank 1)',
+    lake: 'Deep water. A raft could cross it (craft: 3 wood + rope, Artisan rank 2), or freeze it with Frost',
+    cdoor: 'A humming crystal door. A crystal key would fit (craft: 3 crystal shards, Artisan rank 2)',
   };
 
   // ---------- inventory with slot sizes ----------
@@ -535,7 +545,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 19;
+  const BUILD = 20;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -1138,8 +1148,10 @@
   // ---------- crafting ----------
   const recipeKnown = (r) => P.known[r.id] || Object.keys(r.needs).every(k => P.seen[k]);
   const recipeHinted = (r) => recipeKnown(r) || Object.keys(r.needs).some(k => P.seen[k]);
+  const recipeLock = (r) => r.skill && sk(r.skill[0]) < r.skill[1] ? SKILLS.find(x => x.id === r.skill[0]).name + ' skill rank ' + r.skill[1] : '';
   function craftCheck(r) {
     const atS = atShrine();
+    const lk = recipeLock(r); if (lk) return 'Needs ' + lk;
     for (const k in r.needs) if (countOf(k, atS) < r.needs[k]) return 'Missing ' + ITEMS[k].name.toLowerCase();
     let freed = 0; for (const k in r.needs) freed += Math.min(r.needs[k], countOf(k, false)) * isize(k);
     if (bagUsed() - freed + isize(r.id) <= P.bagCap) return '';
@@ -1192,6 +1204,8 @@
     }
     if (id === 'water') { const f = near('burning') || near('blaze');
       if (f) O.push({ label: 'Use: douse fire', sub: f.type === 'burning' ? 'someone is trapped inside!' : 'stop the wildfire', better: true, run() { spend(); douse(f); } }); }
+    if (id === 'bridge') { const c = near('chasm');
+      O.push({ label: 'Use: lay bridge', sub: 'spans the chasm next to you', better: !!c, off: !c && 'Stand next to a chasm', run() { spend(); buildBridge(c); } }); }
     if (id === 'wood') {
       const c = near('chasm'), ic = near('ice'), nw = countOf('wood');
       if (c) O.push({ label: 'Use: build bridge', sub: 'uses 2 wood (' + nw + '/2)', better: nw >= 2, off: nw < 2 && 'You need 2 wood to bridge the chasm', run() { spend(); spend(); buildBridge(c); } });
@@ -2896,19 +2910,24 @@
     const b = e.target.closest('[data-sk]'); if (!b || b.classList.contains('off')) return;
     if (learnSkill(b.dataset.sk)) { const x = SKILLS.find(s => s.id === b.dataset.sk); if (P.sk[x.id]) toast(x.name + ' rank ' + sk(x.id) + ': ' + x.d(sk(x.id))); renderSkills(); }
   };
+  let craftTab = 'all';
   function openCraft() { if (TEST) return; craftOpen = true; bagSel = null; $('craft').style.display = 'flex'; renderCraft(); }
   function closeCraft() { craftOpen = false; $('craft').style.display = 'none'; hudDirty = true; }
   function renderCraft() {
     if (TEST || !craftOpen) return;
     const atS = atShrine();
     let h = '<h2>CRAFTING</h2><div class="note" style="margin:0 0 6px">Combine items from your bag' + (atS ? ' and your stash' : '') + '. New recipes appear as you find ingredients or puzzles.</div>';
+    h += '<div class="ctabs" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:6px">' + CRAFTTABS.map(([k, lab]) => {
+      const n = RECIPES.filter(x => k === 'all' || recipeTabs(x).has(k)).length;
+      return '<button class="act' + (craftTab === k ? ' hot' : '') + '" data-ct="' + k + '" style="padding:4px 9px;font-size:12px">' + lab + '<small style="display:inline;margin-left:4px">' + n + '</small></button>'; }).join('') + '</div>';
     for (const r of RECIPES) {
+      if (craftTab !== 'all' && (!recipeTabs(r).has(craftTab) || !recipeHinted(r))) continue;
       if (!recipeHinted(r)) { h += '<div class="rec"><span style="font-size:20px;width:28px;text-align:center">?</span><span class="grow" style="opacity:.6">??? <i>Unknown recipe. Find more materials</i></span></div>'; continue; }
       if (!recipeKnown(r)) { const ing = Object.keys(r.needs).map(k => P.seen[k] ? '<span class="ing miss">' + img(ICONURL[k]) + r.needs[k] + '</span>' : '<span class="ing miss" style="font-size:18px;width:28px;justify-content:center">?</span>').join('+');
         h += '<div class="rec">' + ing + '<span style="font-size:16px">&rarr;</span>' + img(ICONURL[r.id]) + '<span class="grow"><b>' + ITEMS[r.id].name + '</b><br><i>Find the missing ingredient to learn this</i></span></div>'; continue; }
       const why = craftCheck(r);
       const ing = Object.keys(r.needs).map(k => { const have = countOf(k, atS); return '<span class="ing' + (have < r.needs[k] ? ' miss' : '') + '">' + img(ICONURL[k]) + r.needs[k] + '</span>'; }).join('+');
-      h += '<div class="rec">' + ing + '<span style="font-size:16px">&rarr;</span>' + img(ICONURL[r.id]) + '<span class="grow"><b>' + ITEMS[r.id].name + '</b>' + (isize(r.id) > 1 ? ' (2 slots)' : '') + '<br>' + ITEMS[r.id].d + '</span>' +
+      h += '<div class="rec">' + ing + '<span style="font-size:16px">&rarr;</span>' + img(ICONURL[r.id]) + '<span class="grow"><b>' + (recipeLock(r) ? '&#128274; ' : '') + ITEMS[r.id].name + '</b>' + (isize(r.id) > 1 ? ' (2 slots)' : '') + '<br>' + ITEMS[r.id].d + '</span>' +
         '<button class="act' + (why ? ' off' : '') + '" data-c="' + r.id + '">Craft<small>' + (why || 'ready') + '</small></button></div>';
     }
     h += '<div style="text-align:center;margin-top:8px"><button class="act" id="crClose">Close</button></div>';
@@ -2916,6 +2935,7 @@
   }
   if (!TEST) $('craftBox').onclick = (e) => {
     if (e.target.id === 'crClose') return closeCraft();
+    const ct = e.target.closest('[data-ct]'); if (ct) { craftTab = ct.dataset.ct; return renderCraft(); }
     const b = e.target.closest('[data-c]'); if (!b) return;
     if (b.classList.contains('off')) return; craft(b.dataset.c); renderCraft();
   };
