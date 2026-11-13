@@ -502,7 +502,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 11;
+  const BUILD = 12;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -1532,6 +1532,7 @@
       if ((t.type === 'burning' || t.type === 'blaze' || t.type === 'cavelit') && rnd() < .25) particles.push({ x: w.x + (rnd() - .5) * 24, y: w.y - 8 - e, vx: (rnd() - .5) * 8, vy: -20 - rnd() * 10, life: .8, max: .8, col: rnd() < .5 ? '#ffb02e' : '#ff6a1a', s: 1, g: 0 });
       if ((t.type === 'crystal' || t.type === 'cdoor') && rnd() < .06) particles.push({ x: w.x + (rnd() - .5) * 24, y: w.y - 6 - rnd() * 14, vx: 0, vy: -6, life: 1, max: 1, col: '#c0ffff', s: 1, g: 0 });
       if (mistCap() && rnd() < .03 && DIRS.some(([a, b]) => !tiles.has(key(t.q + a, t.r + b)))) particles.push({ x: w.x + (rnd() - .5) * 60, y: w.y + (rnd() - .5) * 20, vx: (rnd() - .5) * 6, vy: -3, life: 3, max: 3, col: rnd() < .5 ? '#3a1a5a' : '#5a2a7a', s: 3, g: 0 });
+      if (!S.cave && t.type === 'grass' && rnd() < .003) particles.push({ x: w.x + (rnd() - .5) * 44, y: w.y - 4 - rnd() * 12, vx: (rnd() - .5) * 6, vy: -3 - rnd() * 4, life: 2.6, max: 2.6, col: rnd() < .5 ? '#eaff9a' : '#9affd4', s: 1, g: 0 });
       if (t.type === 'shrine' && S.cp === t && rnd() < .15) particles.push({ x: w.x - 13 + (rnd() - .5) * 8, y: w.y - 30, vx: (rnd() - .5) * 4, vy: -12, life: 1.2, max: 1.2, col: '#a0f0ff', s: 1, g: 0 });
     }
     for (const p of particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.g * dt; }
@@ -1591,12 +1592,48 @@
     }
     d.data.set(o); g.putImageData(d, 0, 0);
   }
+  // smooth value noise, used for painterly patches
+  const vnoise = (x, y, sd) => { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, h2 = (a, b) => hash(a * 157.3 + b * 311.7 + sd * 17.1), u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    return (h2(xi, yi) * (1 - u) + h2(xi + 1, yi) * u) * (1 - v) + (h2(xi, yi + 1) * (1 - u) + h2(xi + 1, yi + 1) * u) * v; };
+  function toHsl(r, g, b) { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn; if (!d) return [0, 0, l];
+    const sa = d / (1 - Math.abs(2 * l - 1)), h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return [h * 60, sa, l]; }
+  function fromHsl(h, sa, l) { const c = (1 - Math.abs(2 * l - 1)) * sa, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2, i = Math.floor(h / 60) % 6;
+    const q = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][i]; return [Math.round((q[0] + m) * 255), Math.round((q[1] + m) * 255), Math.round((q[2] + m) * 255)]; }
+  // the art pass every cached drawing goes through: hue-shifted shading (cool violet shadows, warm highlights),
+  // extra vibrance, a lit rim on the upper-left, and a coloured outline instead of flat black
+  function polish(c, o) {
+    o = o || {}; const g = c.getContext('2d'), w = c.width, h = c.height, d = g.getImageData(0, 0, w, h), a = d.data, src = new Uint8ClampedArray(a), vib = o.vib === undefined ? 1 : o.vib;
+    const A = (x, y) => x < 0 || y < 0 || x >= w || y >= h ? 0 : src[(y * w + x) * 4 + 3];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4; if (src[i + 3] <= 60) continue;
+      let [H, Sa, L] = toHsl(src[i], src[i + 1], src[i + 2]);
+      if (o.rim) { if (A(x, y - 1) <= 60 || A(x - 1, y) <= 60) L = Math.min(.97, L * 1.13 + .03); else if (A(x, y + 1) <= 60 || A(x + 1, y) <= 60) L *= .8; }
+      const dark = L < .5, t = Math.abs(L - .5) * 2, tg = dark ? 252 : 48;
+      if (Sa < .07) { H = tg; Sa = .04 + .1 * t * (dark ? 1 : .4); }
+      else { const dh = ((tg - H + 540) % 360) - 180; H = (H + dh * .15 * t + 360) % 360; Sa = Math.min(1, Sa * (1 + .2 * vib)); }
+      const q = fromHsl(H, Sa, L); a[i] = q[0]; a[i + 1] = q[1]; a[i + 2] = q[2];
+    }
+    if (o.ol !== false) { const lit = new Uint8ClampedArray(a);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4; if (src[i + 3] > 0) continue;
+        let n = -1, top = false;
+        if (A(x + 1, y) > 60) { n = i + 4; top = true; } else if (A(x, y + 1) > 60) { n = i + w * 4; top = true; } else if (A(x - 1, y) > 60) n = i - 4; else if (A(x, y - 1) > 60) n = i - w * 4;
+        if (n < 0) continue;
+        let [H, Sa, L] = toHsl(lit[n], lit[n + 1], lit[n + 2]); const dh = ((258 - H + 540) % 360) - 180;
+        const q = fromHsl((H + dh * .3 + 360) % 360, Math.min(1, Sa * .9 + .15), Math.min(.2, L * (top ? .36 : .22)) + .015);
+        a[i] = q[0]; a[i + 1] = q[1]; a[i + 2] = q[2]; a[i + 3] = o.oa || 255;
+      } }
+    g.putImageData(d, 0, 0);
+  }
   // cached static drawings
   const OC = {};
-  function obj(k, w, h, ax, ay, fn, x, y, ol) {
+  function obj(k, w, h, ax, ay, fn, x, y, ol, sw) {
     let c = OC[k];
-    if (!c) { c = mkC(w, h); const p = G; G = c.getContext('2d'); fn(ax, ay); G = p; if (ol !== false) outlineC(c, '#0a0a0c'); OC[k] = c; }
-    G.drawImage(c, Math.round(x - ax), Math.round(y - ay));
+    if (!c) { c = mkC(w, h); const p = G; G = c.getContext('2d'); fn(ax, ay); G = p; polish(c, { rim: ol !== false, ol: ol !== false }); OC[k] = c; }
+    const X = Math.round(x - ax), Y = Math.round(y - ay);
+    if (ol !== false) { const rx = Math.round(w * .3); ell(Math.round(x) + 2, Math.round(y) - 1, rx, Math.max(2, Math.round(rx * .32)), 'rgba(6,8,30,0.3)'); }
+    if (sw) { const h1 = Math.round(h * .5); G.drawImage(c, 0, 0, w, h1, X + sw, Y, w, h1); G.drawImage(c, 0, h1, w, h - h1, X, Y + h1, w, h - h1); }
+    else G.drawImage(c, X, Y);
   }
   // sprites from maps
   const SC = {};
@@ -1604,7 +1641,7 @@
     if (SC[k]) return SC[k];
     const w = Math.max(...rows.map(r => r.length)), h = rows.length, c = mkC(w + 2, h + 2), g = c.getContext('2d');
     rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const ch = row[x]; if (ch === '.' || !pal[ch]) continue; g.fillStyle = pal[ch]; g.fillRect(x + 1, y + 1, 1, 1); } });
-    if (ol !== false) outlineC(c, ol || '#08080a');
+    polish(c, { rim: true, ol: ol !== false });
     SC[k] = c; return c;
   }
   function drawFeet(c, fx, fy, flip, sc, alpha) {
@@ -1625,21 +1662,22 @@
   // =====================================================
   //  TILES
   // =====================================================
+  const SOIL = { side: ['#5a3226','#763f2a','#965634'], dots: '#3c1f20', rock: ['#66505c','#463444','#2c2034'] };
   const TP = {
-    grass:  { top: ['#2a8c3c','#36a64a','#47c05c','#6fdd80'], lip: '#227a33', side: ['#55361f','#6b4529','#83583a'], dots: '#43281a', rock: ['#5b4b45','#433733','#2e2523'], deco: 'grass', roots: 1 },
-    dirt:   { top: ['#6e5034','#80603e','#96744c','#b08e62'], lip: '#5e4228', side: ['#55361f','#6b4529','#83583a'], dots: '#43281a', rock: ['#5b4b45','#433733','#2e2523'], deco: 'dirt' },
-    stone:  { top: ['#555e68','#68727c','#7d8892','#9ea9b3'], lip: '#4a525b', side: ['#3a4047','#474e56','#58606a'], dots: '#2c3136', rock: ['#50555b','#3c4046','#2a2d31'], deco: 'stone' },
-    water:  { top: ['#1d5aa6','#2770c4','#3787dc','#64aeee'], lip: '#2a8c3c', side: ['#55361f','#6b4529','#83583a'], dots: '#43281a', rock: ['#5b4b45','#433733','#2e2523'], deco: 'water', roots: 1 },
-    deep:   { top: ['#0e2b62','#143a7c','#1c4a94','#3168b6'], lip: '#2a8c3c', side: ['#55361f','#6b4529','#83583a'], dots: '#43281a', rock: ['#5b4b45','#433733','#2e2523'], deco: 'water', roots: 1 },
-    burnt:  { top: ['#26160e','#341f14','#44291a','#5a3a24'], lip: '#22140c', side: ['#3a2416','#4a2e1c','#5a3a24'], dots: '#1a0e08', rock: ['#3a302c','#2a2220','#1c1715'], deco: 'burnt' },
-    ice:    { top: ['#86c2e6','#a2d8f6','#c0eaff','#eafaff'], lip: '#74b0d8', side: ['#46769e','#5584b0','#6698c4'], dots: '#3a6a90', rock: ['#5a7088','#45586c','#33414f'], deco: 'ice' },
-    marble: { top: ['#837da4','#9892b8','#aea8cc','#cec8ea'], lip: '#746e96', side: ['#46405f','#524b70','#5f5880'], dots: '#3a3452', rock: ['#4e4a62','#3a374a','#2a2836'], deco: 'marble' },
-    cave:   { top: ['#1f222b','#292d37','#343944','#454b58'], lip: '#191c23', side: ['#13151a','#1a1d23','#22262d'], dots: '#0d0f12', rock: ['#22252c','#191b20','#101216'], deco: 'cave' },
-    cpool:  { top: ['#0e3a44','#134a56','#1a5c6a','#2a7a88'], lip: '#191c23', side: ['#13151a','#1a1d23','#22262d'], dots: '#0d0f12', rock: ['#22252c','#191b20','#101216'], deco: 'water' },
-    obsid:  { top: ['#241a2c','#33263e','#443352','#5c466c'], lip: '#1e1626', side: ['#1a1220','#22182a','#2c2036'], dots: '#120c16', rock: ['#2a2030','#1e1624','#140e18'], deco: 'obsid' },
-    crys:   { top: ['#443462','#544278','#665290','#8670b2'], lip: '#3a2c56', side: ['#30264a','#3a2e58','#463868'], dots: '#221a36', rock: ['#3e3650','#2e283c','#211c2c'], deco: 'crys' },
+    grass:  { top: ['#1c8448','#2caa4a','#56cc4c','#96ea5c'], lip: '#1c7c44', ...SOIL, deco: 'grass', roots: 1 },
+    dirt:   { top: ['#70462e','#8c5c34','#aa7842','#cea05e'], lip: '#5e3a28', ...SOIL, deco: 'dirt' },
+    stone:  { top: ['#4a5270','#666f8a','#8a94a8','#b8c2cc'], lip: '#424a64', side: ['#30364e','#424a64','#58627c'], dots: '#242840', rock: ['#4c5068','#363a50','#24263a'], deco: 'stone' },
+    water:  { top: ['#1856bc','#2278e0','#38a2f4','#80d2ff'], lip: '#1c7c44', ...SOIL, deco: 'water', roots: 1, foam: '#eafaff' },
+    deep:   { top: ['#10288a','#163aa8','#1e54c4','#3c80e4'], lip: '#1c7c44', ...SOIL, deco: 'water', roots: 1, foam: '#bfe6ff' },
+    burnt:  { top: ['#24141a','#361c1a','#4a281c','#663a22'], lip: '#201018', side: ['#3a2018','#4e2a1c','#623a24'], dots: '#180a10', rock: ['#3c2e34','#2a2028','#1a141c'], deco: 'burnt' },
+    ice:    { top: ['#78b4ec','#9cd4fa','#c2ecff','#f0fcff'], lip: '#68a4de', side: ['#3c68a8','#4c7cbc','#6096d0'], dots: '#2e5890', rock: ['#586c94','#404e74','#2c3656'], deco: 'ice' },
+    marble: { top: ['#7c74b0','#968ec6','#b0aadc','#d6d0f6'], lip: '#6c64a0', side: ['#3e3868','#4c447c','#5c5490'], dots: '#2e2a54', rock: ['#4c4670','#363254','#26223c'], deco: 'marble' },
+    cave:   { top: ['#1c2034','#282e44','#363e56','#4a546e'], lip: '#161a2a', side: ['#101320','#181c2c','#20263a'], dots: '#0a0c16', rock: ['#20243a','#16182a','#0e0f1c'], deco: 'cave' },
+    cpool:  { top: ['#0a3a52','#0e5068','#16687e','#2a90a0'], lip: '#161a2a', side: ['#101320','#181c2c','#20263a'], dots: '#0a0c16', rock: ['#20243a','#16182a','#0e0f1c'], deco: 'water', foam: '#7adcd8' },
+    obsid:  { top: ['#22163a','#32224e','#463064','#624682'], lip: '#1a1030', side: ['#160e28','#1e1434','#2a1c44'], dots: '#0e081a', rock: ['#281c3c','#1a122a','#100a1c'], deco: 'obsid' },
+    crys:   { top: ['#3e2c74','#50388e','#6648a8','#8a68cc'], lip: '#32245e', side: ['#2a2054','#342866','#42327a'], dots: '#1c1440', rock: ['#3a2e60','#2a2048','#1c1432'], deco: 'crys' },
   };
-  for (const k in TP) TP[k].sideD = TP[k].side.map(c => shade(c, -.3));
+  for (const k in TP) { const q = TP[k]; q.sideD = q.side.map(c => shade(c, -.3)); q.sideL = q.side.map(c => shade(c, .14)); q.stoneL = shade(q.side[2], .4); q.rockL = shade(q.rock[0], .2); q.lipD = shade(q.lip, -.22); q.lipL = q.top[2]; }
   const palKey = (t) => {
     switch (t.type) {
       case 'river': return 'water';
@@ -1664,36 +1702,53 @@
   const TOPH = Math.ceil(R * SQ), TW = 2 * R + 8, TH = TOPH * 2 + T + 40, OX = R + 4, OY = TOPH + 3;
   const inHex = (n, m) => Math.abs(m) <= .866 && 1.732 * Math.abs(n) + Math.abs(m) <= 1.732;
   const TC = {};
-  function tileCanvas(pk, vr) {
-    const k = pk + '|' + vr; if (TC[k]) return TC[k];
+  function tileCanvas(pk, vr, fr) {
+    fr = fr || 0; const k = pk + '|' + vr + '|' + fr; if (TC[k]) return TC[k];
     const c = mkC(TW, TH), prev = G; G = c.getContext('2d');
-    const p = TP[pk], cx = OX, cy = OY, rr = R - GAP, v = hexVerts(cx, cy, rr);
+    const p = TP[pk], cx = OX, cy = OY, rr = R - GAP, v = hexVerts(cx, cy, rr), sd = vr * 13 + pk.length * 7;
     const hh = (a, b) => hash(a * 12.9898 + b * 78.233 + vr * 37.7 + pk.length * 5.1);
-    // floating rock underside
+    // floating rock underside, chunky facets
     const base = cy + T, tip = base + 20 + Math.floor(hh(1, 1) * 10);
     const under = [[v[3][0], v[3][1] + T], [v[2][0], v[2][1] + T], [v[1][0], v[1][1] + T], [v[0][0], v[0][1] + T],
       [cx + rr * .72, base + 6 + hh(2, 2) * 4], [cx + rr * .42, base + 12 + hh(3, 3) * 5], [cx + rr * .16, base + 17 + hh(7, 7) * 4], [cx + hh(4, 4) * 6 - 3, tip],
       [cx - rr * .2, base + 16 + hh(8, 8) * 4], [cx - rr * .45, base + 11 + hh(5, 5) * 5], [cx - rr * .74, base + 5 + hh(6, 6) * 3]];
-    scan(under, (x, y) => { const f = (y - base) / (tip - base); let i = x > cx + 3 ? 2 : x < cx - rr * .38 ? 0 : 1; if (f > .5) i = Math.min(2, i + 1); if (hh(x, y) < .14) i = Math.min(2, i + 1); return p.rock[i]; });
-    for (let i = 0; i < 7; i++) { const x = Math.round(cx - rr * .55 + hh(i, 20) * rr * 1.1), y0 = Math.round(base + 3 + hh(i, 21) * 8), L = 2 + Math.floor(hh(i, 22) * 4); px(x, y0, 1, L, i % 2 ? '#1e1714' : '#5e4e48'); }
-    if (p.roots) for (let i = 0; i < 9; i++) { const x = Math.round(cx - rr * .9 + hh(i, 30) * rr * 1.8), L = 2 + Math.floor(hh(i, 31) * 7); const ey = Math.round(cy + rr * SQ * .85 + T); for (let j = 0; j < L; j++) px(x + (j > 3 && i % 2 ? 1 : 0), ey + j - 2, 1, 1, i % 3 ? '#2a7a34' : '#4a3020'); }
-    // three visible side faces with soil strata
+    scan(under, (x, y) => { const f = (y - base) / (tip - base); let i = x > cx + 3 ? 2 : x < cx - rr * .38 ? 0 : 1; if (f > .55) i = Math.min(2, i + 1);
+      const nz = vnoise(x / 5, y / 4, sd); if (nz > .64) i = Math.max(0, i - 1); else if (nz < .32) i = Math.min(2, i + 1);
+      return i === 0 && hh(x, y) < .14 ? p.rockL : p.rock[i]; });
+    for (let i = 0; i < 7; i++) { const x = Math.round(cx - rr * .55 + hh(i, 20) * rr * 1.1), y0 = Math.round(base + 3 + hh(i, 21) * 8), L = 2 + Math.floor(hh(i, 22) * 4); px(x, y0, 1, L, i % 2 ? p.dots : p.rockL); }
+    if (p.roots) for (let i = 0; i < 9; i++) { const x = Math.round(cx - rr * .9 + hh(i, 30) * rr * 1.8), L = 2 + Math.floor(hh(i, 31) * 7); const ey = Math.round(cy + rr * SQ * .85 + T); for (let j = 0; j < L; j++) px(x + (j > 3 && i % 2 ? 1 : 0), ey + j - 2, 1, 1, i % 3 ? (j < 2 ? '#3aa848' : '#1e7440') : '#5a3226'); }
+    // three visible side faces: overhanging turf, soil strata, embedded stones
     for (let i = 0; i < 3; i++) {
-      const a = v[i], b = v[i + 1], quad = [a, b, [b[0], b[1] + T], [a[0], a[1] + T]];
-      scan(quad, (x, y) => { const ey = a[1] + (x - a[0]) * (b[1] - a[1]) / ((b[0] - a[0]) || 1), dk = y - ey;
-        if (dk < 2.5) return (p.lip && hh(x, 40) < .85) || dk < 1.5 ? p.lip : p.side[i];
-        if (hh(x, y) < .09) return p.dots;
-        if (Math.abs(dk - 7) < .5 && hh(x, 41) < .6) return p.sideD[i];
-        return dk > T - 3 ? p.sideD[i] : p.side[i]; });
+      const a = v[i], b = v[i + 1], quad = [a, b, [b[0], b[1] + T], [a[0], a[1] + T]], sl = (b[1] - a[1]) / ((b[0] - a[0]) || 1);
+      scan(quad, (x, y) => { const dk = y - (a[1] + (x - a[0]) * sl), lipD = p.roots ? 2 + Math.floor(hh(x >> 1, 40) * 3.4) : 2.5;
+        if (dk < lipD) return dk < 1.2 ? p.lipL : p.roots && dk >= lipD - 1 ? p.lipD : p.lip;
+        if (dk < lipD + 1.2) return p.sideD[i];
+        if (hh(x, y) < .07) return p.dots;
+        const band = dk + (vnoise(x / 6, 0, sd + i) - .5) * 3;
+        if (band > T - 3.5) return p.sideD[i];
+        if (band > 6.2 && band < 7.4) return p.sideL[i];
+        return p.side[i]; });
+      for (let s2 = 0; s2 < 2; s2++) { const u = .15 + hh(i * 7 + s2, 60) * .7, x = Math.round(a[0] + (b[0] - a[0]) * u), y = Math.round(a[1] + (b[1] - a[1]) * u + 6 + hh(i + s2, 61) * 2);
+        px(x, y, 3, 2, p.sideL[i]); px(x, y, 2, 1, p.stoneL); px(x, y + 2, 3, 1, p.sideD[i]); }
     }
-    // lit top face
-    scan(v, (x, y) => { const n = (x - cx) / rr, m = (y - cy) / (rr * SQ); const l = .52 - .3 * n - .42 * m + (hh(x, y) - .5) * .22;
-      const tn = p.top; let f = clamp(l, 0, .999) * (tn.length - 1), i = Math.floor(f); if (f - i > bay(x, y)) i++; return tn[Math.min(3, i)]; });
+    // lit top face: painterly patches on land, animated ripples and shore foam on water
+    const water = p.deco === 'water', ph = fr / 4 * 6.2832;
+    scan(v, (x, y) => { const n = (x - cx) / rr, m = (y - cy) / (rr * SQ), tn = p.top;
+      if (water) { const e = 1 - Math.max(Math.abs(m) / .866, (1.732 * Math.abs(n) + Math.abs(m)) / 1.732);
+        if (e < .07) return (x * 3 + y * 5 + fr) % 4 < 2 ? p.foam : tn[3];
+        const wv = Math.sin(x * .42 + Math.sin(y * .55 + ph) * 1.6 + ph) + .6 * Math.sin(y * .9 - x * .21 - ph);
+        let f = clamp(.5 - .22 * n - .3 * m, 0, .999) * 3, i = Math.floor(f); if (f - i > bay(x, y)) i++;
+        if (wv > 1.1) i++; else if (wv < -1.15) i--; if (e < .15 && (x + y + fr) % 3 === 0) i++;
+        return tn[clamp(i, 0, 3)]; }
+      const l = .5 - .26 * n - .36 * m + (vnoise(x / 6, y / 4, sd) - .5) * .42 + (hh(x, y) - .5) * .1;
+      let f = clamp(l, 0, .999) * (tn.length - 1), i = Math.floor(f); if (f - i > bay(x, y)) i++; return tn[Math.min(3, i)]; });
     // deco
     const spot = (s, inset) => { for (let k2 = 0; k2 < 12; k2++) { const n = (hh(s, k2) - .5) * 2 * inset, m = (hh(s + 50, k2) - .5) * 2 * inset; if (inHex(n, m)) return [Math.round(cx + n * rr), Math.round(cy + m * rr * SQ)]; } return [cx, cy]; };
     if (p.deco === 'grass') {
-      for (let i = 0; i < 12; i++) { const [x, y] = spot(i, .8); px(x, y, 1, 1, '#1f7a30'); px(x - 1, y - 1, 1, 1, '#5fd070'); px(x + 1, y - 1, 1, 1, '#5fd070'); px(x, y - 2, 1, 1, '#8ef09a'); }
-      if (vr % 2) for (let i = 0; i < 4; i++) { const [x, y] = spot(i + 40, .7), col = ['#fff4a0', '#ffb0d0', '#ffffff', '#a0c8ff'][i]; px(x - 1, y, 3, 1, col); px(x, y - 1, 1, 3, col); px(x, y, 1, 1, '#e8a020'); }
+      for (let i = 0; i < 18; i++) { const [x, y] = spot(i, .82); px(x, y, 2, 1, p.top[0]); px(x - 1, y - 1, 1, 1, p.top[3]); px(x + 1, y - 1, 1, 1, '#c0f66a'); px(x, y - 2, 1, 1, '#e2ff8c'); }
+      if (vr === 3) for (let i = 0; i < 3; i++) { const [x, y] = spot(i + 70, .7); px(x, y, 3, 2, '#8a94a8'); px(x, y, 2, 1, '#d0d8de'); px(x, y + 2, 3, 1, p.top[0]); }
+      if (vr === 2) for (let i = 0; i < 2; i++) { const [x, y] = spot(i + 80, .7); px(x, y - 2, 3, 2, '#f04a4a'); px(x, y - 2, 1, 1, '#ffffff'); px(x + 1, y, 1, 2, '#f4ead8'); }
+      for (let i = 0; i < 1 + vr * 2; i++) { const [x, y] = spot(i + 40, .72), col = ['#ffe85a', '#ff8ac8', '#ffffff', '#8ac4ff'][(i + vr) % 4]; px(x + 1, y + 1, 1, 1, p.top[0]); px(x - 1, y, 3, 1, col); px(x, y - 1, 1, 3, col); px(x, y, 1, 1, '#e8a020'); }
     } else if (p.deco === 'stone') {
       for (let i = 0; i < 6; i++) { const [x, y] = spot(i, .75); line(x, y, x + 3 + Math.floor(hh(i, 9) * 4), y + 1 + Math.floor(hh(i, 8) * 2), p.top[0]); }
       for (let i = 0; i < 10; i++) { const [x, y] = spot(i + 20, .8); px(x, y, 1, 1, p.top[3]); }
@@ -1719,13 +1774,13 @@
     // crisp rims
     for (let i = 3; i < 6; i++) line(v[i][0], v[i][1], v[(i + 1) % 6][0], v[(i + 1) % 6][1], i === 5 ? p.top[2] : p.top[3]);
     for (let i = 0; i < 3; i++) line(v[i][0], v[i][1], v[i + 1][0], v[i + 1][1], shade(p.top[0], -.12));
-    outlineC(c, '#040406', 200);
+    polish(c, { oa: 215, vib: .5 });
     G = prev; TC[k] = c; return c;
   }
 
   // ---------- static object painters ----------
-  const LEAF = ['#155224','#1f7030','#2f9a42','#5cc96c'];
-  const ROCK = ['#454c54','#646e78','#8d97a1','#bcc5ce'];
+  const LEAF = ['#0e4a34','#167038','#289c3c','#56c844','#a2e858'];
+  const ROCK = ['#383c58','#565e7a','#828ca2','#b4bec8','#e0e8ea'];
   function fTree(vr) { return (ax, ay) => {
     px(ax - 2, ay - 13, 5, 14, '#6b4423'); px(ax - 2, ay - 13, 2, 14, '#8e5c32'); px(ax + 2, ay - 13, 1, 14, '#46290f'); px(ax - 4, ay, 9, 1, '#46290f'); px(ax - 3, ay - 1, 1, 1, '#6b4423'); px(ax + 3, ay - 1, 1, 1, '#6b4423');
     if (vr % 2 === 0) {
@@ -1889,7 +1944,7 @@
     if (t.ash && ty === 'grass') for (let i = 0; i < 8; i++) px(cx + (hash(t.q * 7 + i) - .5) * 40, cy + (hash(t.r * 5 + i + 3) - .5) * 18, 2, 1, '#1a120e');
     if (t.stump) obj('stump', 12, 10, 6, 8, fStump, cx - 12, cy + 1);
     switch (ty) {
-      case 'tree': obj('tree' + vr, 40, 48, 20, 44, fTree(vr), cx - 10, cy + 2); break;
+      case 'tree': obj('tree' + vr, 40, 48, 20, 44, fTree(vr), cx - 10, cy + 2, undefined, Math.round(Math.sin(gt * 1.3 + t.q * 1.7 + t.r) * .8)); break;
       case 'bush': obj('bush' + t.units, 28, 20, 14, 17, fBush(t.units), cx - 9, cy + 2); break;
       case 'stone': obj('stones' + t.units, 34, 22, 17, 17, fStones(t.units, ROCK), cx - 6, cy + 3); break;
       case 'ore': obj('ore' + t.units, 34, 22, 17, 17, fStones(t.units, ['#3a342e', '#5a514a', '#7a7068', '#9a9088'], '#e8903a'), cx - 6, cy + 3); break;
@@ -2039,7 +2094,7 @@
   function iconFrom(map, pal) {
     const rows = map.slice(), w = 10, h = 10, c = mkC(12, 12), g = c.getContext('2d'), ox = Math.floor((w - Math.max(...rows.map(r => r.length))) / 2), oy = Math.floor((h - rows.length) / 2);
     rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const ch = row[x]; if (ch === '.' || !pal[ch]) continue; g.fillStyle = pal[ch]; g.fillRect(x + 1 + ox, y + 1 + oy, 1, 1); } });
-    outlineC(c, '#050505'); return c;
+    polish(c, { rim: true }); return c;
   }
   function buildIcons() { for (const k in IM) { ICONC[k] = iconFrom(IM[k][0], IM[k][1]); ICONURL[k] = ICONC[k].toDataURL(); } }
   function gearIconC(g) {
@@ -2054,22 +2109,28 @@
   let nebula = null, vign = null;
   function buildBackdrop() {
     const nw = W + 120, nh = H + 120; nebula = mkC(nw, nh); const p = G; G = nebula.getContext('2d');
-    G.fillStyle = '#04030a'; G.fillRect(0, 0, nw, nh);
-    const n2 = (x, y) => { let v = 0, a = 1, f = .008; for (let o = 0; o < 4; o++) { v += a * (Math.sin(x * f + o * 1.7) * Math.cos(y * f * 1.3 - o * .9) + Math.sin((x + y) * f * .7 + o)); a *= .5; f *= 2.1; } return v; };
-    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
-      const v = n2(x, y), u = n2(x + 900, y + 300);
-      if (v > .6 && bay(x, y) < (v - .6) * .9) { G.fillStyle = v > 1.3 ? '#2c1844' : '#1a0f2e'; G.fillRect(x, y, 1, 1); }
-      else if (u > .8 && bay(x, y) < (u - .8) * .8) { G.fillStyle = u > 1.4 ? '#10304a' : '#0a1a30'; G.fillRect(x, y, 1, 1); }
+    G.fillStyle = '#05040e'; G.fillRect(0, 0, nw, nh);
+    const fb = (x, y, sd) => vnoise(x / 90, y / 70, sd) * .55 + vnoise(x / 38, y / 30, sd + 1) * .3 + vnoise(x / 14, y / 12, sd + 2) * .15;
+    const CL = [[11, .58, ['#120a28', '#22104a', '#3c1668', '#5e2484']], [23, .6, ['#07162e', '#0a2850', '#0f446c', '#166e84']], [37, .7, ['#220a1c', '#3e1028', '#641c32', '#8e3c34']]];
+    for (let y = 0; y < nh; y += 2) for (let x = 0; x < nw; x += 2) for (const [sd, thr, tn] of CL) {
+      const val = fb(x, y, sd); if (val <= thr) continue; const f = Math.min(3.999, (val - thr) / .2 * 4), fi = Math.floor(f);
+      for (let k = 0; k < 4; k++) { const xx = x + (k & 1), yy = y + (k >> 1), i = (f - fi > bay(xx, yy) ? fi + 1 : fi) - 1; if (i >= 0) { G.fillStyle = tn[Math.min(3, i)]; G.fillRect(xx, yy, 1, 1); } }
     }
-    const pr = Math.max(14, Math.round(Math.min(nw, nh) * .07)), pxp = Math.round(nw * .82), pyp = Math.round(nh * .22);
-    shEll(pxp, pyp, pr, pr, ['#1a1030', '#3a2a5a', '#6a4a8a', '#9a7ab8']);
-    for (let i = 0; i < pr * 2.6; i++) { const a = i / (pr * 2.6) * Math.PI; const x = pxp + Math.cos(a) * pr * 1.6, y = pyp + Math.sin(a) * pr * .35; if (Math.sin(a) > 0) px(x, y, 1, 1, '#b8a0d0'); }
-    for (let k = 0; k < 5; k++) { const x = hash(k * 3) * nw, y = nh * (.55 + hash(k * 7) * .4), s = 4 + hash(k * 9) * 8; px(x - s, y, s * 2, 2, '#0e0c18'); for (let j = 0; j < s; j++) px(x - s + j * 2, y + 2 + Math.floor(j * (s - j) / s), 2, 1, '#0b0914'); }
+    for (let i = 0; i < 700; i++) { const x = hash(i * 1.7) * nw, y = hash(i * 2.9 + 5) * nh; if (fb(x, y, 11) < .5 && i % 3) continue; px(x, y, 1, 1, ['#5a5a8a', '#8a7ab0', '#6a9ab0', '#b0a0c8'][i % 4]); }
+    // ringed gas giant with bands and a lit limb, plus a small moon
+    const pr = Math.max(16, Math.round(Math.min(nw, nh) * .085)), pxp = Math.round(nw * .82), pyp = Math.round(nh * .22);
+    const PT = ['#241048', '#4a2078', '#8438a0', '#c460a8', '#f0a0a0', '#ffe0b0'];
+    for (let dy = -pr; dy <= pr; dy++) for (let dx = -pr; dx <= pr; dx++) { const nx = dx / pr, ny = dy / pr; if (nx * nx + ny * ny > 1) continue; const x = pxp + dx, y = pyp + dy;
+      let f = clamp(.46 - .4 * nx - .44 * ny + Math.sin(dy * .55 + Math.sin(dx * .12) * 1.2) * .1, 0, .999) * 5, i = Math.floor(f); if (f - i > bay(x, y)) i++; px(x, y, 1, 1, PT[Math.min(5, i)]); }
+    for (let i = 0; i < pr * 8; i++) { const a = i / (pr * 8) * 6.2832, ca = Math.cos(a), sa = Math.sin(a); for (let k = 0; k < 3; k++) { const rad = pr * (1.5 + k * .13), x = pxp + ca * rad, y = pyp + sa * rad * .26 + ca * rad * .12;
+      if (sa < 0 && Math.hypot((x - pxp), (y - pyp)) < pr) continue; px(x, y, 1, 1, ['#ffd8a8', '#c890c8', '#8a60b0'][k]); } }
+    shEll(Math.round(nw * .12), Math.round(nh * .16), 6, 6, ['#2a3050', '#56628a', '#96a6c0', '#e0ecf0']);
+    for (let k = 0; k < 6; k++) { const x = Math.round(hash(k * 3) * nw), y = Math.round(nh * (.5 + hash(k * 7) * .45)), sz = Math.round(5 + hash(k * 9) * 9); px(x - sz, y, sz * 2, 1, '#1c4030'); px(x - sz, y + 1, sz * 2, 2, '#1a1428'); for (let j = 0; j < sz; j++) px(x - sz + j * 2, y + 3 + Math.floor(j * (sz - j) / sz), 2, 1, '#120e20'); }
     G = p;
-    vign = mkC(W, H); const g = vign.getContext('2d'), gr = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .3, W / 2, H / 2, Math.max(W, H) * .75);
-    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,8,0.7)'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    vign = mkC(W, H); const g = vign.getContext('2d'), gr = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .75);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(2,0,14,0.5)'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
   }
-  const stars = []; for (let i = 0; i < 220; i++) stars.push({ x: rnd(), y: rnd(), b: rnd(), s: rnd() < .08 ? 2 : 1, sp: .5 + rnd() * 2, d: .02 + rnd() * .06, c: pick(['#ffffff', '#ffffff', '#cfe0ff', '#ffe8c8']) });
+  const stars = []; for (let i = 0; i < 220; i++) stars.push({ x: rnd(), y: rnd(), b: rnd(), s: rnd() < .08 ? 2 : 1, sp: .5 + rnd() * 2, d: .02 + rnd() * .06, c: pick(['#ffffff', '#ffffff', '#bcd8ff', '#ffe2b0', '#ffc8ec', '#a8f4ff']) });
   let shoot = null;
 
   function marker(wx, wy, ox, oy, col) {
@@ -2152,7 +2213,7 @@
       else { const t = it.t, k = Math.min(1, (gt - t.born) / .45), drop = k < 1 ? -Math.round(30 * (1 - k) * (1 - k)) : 0;
         const cx = Math.round(it.w.x) + ox, cy = Math.round(it.w.y) + oy + Math.round(Math.sin(gt * 1.5 + t.phase) * 2.6) + drop;
         if (k < 1) G.globalAlpha = k;
-        G.drawImage(tileCanvas(palKey(t), varOf(t)), cx - OX, cy - OY);
+        { const pk = palKey(t); G.drawImage(tileCanvas(pk, varOf(t), TP[pk].deco === 'water' ? Math.floor(gt * 5) % 4 : 0), cx - OX, cy - OY); }
         drawObject(t, cx, cy);
         G.globalAlpha = 1;
         if (hoverT === t) outlineHex(cx, cy - elev(t), monAt(t.q, t.r) ? '#ff5a4a' : blocked(t) ? '#ff9a3a' : '#ffe14a');
