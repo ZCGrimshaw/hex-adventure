@@ -6,6 +6,10 @@
 <title>Hex Adventure</title>
 <style>
   html, body { margin:0; height:100%; background:#000; overflow:hidden; }
+  * { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  body, canvas#c, .ui, .modal, button { -webkit-user-select: none; user-select: none; }
+  textarea, input { -webkit-user-select: text; user-select: text; }
+  canvas#c, button { outline: none; }
   body { font-family: Verdana, Arial, sans-serif; color:#e8f0e8; }
   canvas#c { display:block; touch-action:none; }
   .ui { position:fixed; font-weight:700; text-shadow:0 1px 0 #000; }
@@ -560,7 +564,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 25;
+  const BUILD = 26;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -3137,10 +3141,7 @@
   function tapAt(touch) {
     if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || hallOpen) { sel = null; return; }
     const c = cellAtMouse();
-    if (!touch) { act(c, false); return; }
-    if (!(tiles.has(key(c.q, c.r)) || isCand(c.q, c.r))) { sel = null; return; }
-    if (sel && sel.q === c.q && sel.r === c.r) { sel = null; act(c, true); }
-    else sel = { q: c.q, r: c.r };
+    sel = null; act(c, !!touch); // one tap is enough, on touch screens too
   }
   canvas.addEventListener('pointermove', (e) => {
     setMouse(e); const p = ptrs.get(e.pointerId); if (!p) return;
