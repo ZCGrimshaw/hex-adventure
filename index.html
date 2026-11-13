@@ -560,7 +560,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 24;
+  const BUILD = 25;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -612,7 +612,7 @@
   //  GENERATION
   // =====================================================
   function makeGear(d, bonus, slot) {
-    const t = clamp(1 + Math.floor(d / 28) + (rnd() < 0.15 ? 1 : 0) + (bonus || 0), 1, 7), n = TIERN[t - 1];
+    const t = clamp(1 + Math.floor(d / 45) + (rnd() < 0.15 ? 1 : 0) + (bonus || 0), 1, 7), n = TIERN[t - 1];
     slot = slot || wpick([['weapon', 2], ['shield', 1.2], ['chest', 1.2], ['legs', 1], ['helmet', 1], ['boots', 1], ['ring', 1.3]]);
     const g = { kind: 'gear', slot, tier: t, col: TCOL[t - 1], atk: 0, def: 0, hp: 0, mp: 0, crit: 0, flee: 0 };
     if (slot === 'weapon') { g.name = WEAP[t - 1]; g.atk = WATK[t - 1] + ri(0, 1); }
