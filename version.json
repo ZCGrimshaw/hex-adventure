@@ -1,1 +1,1 @@
-{ "build": 22, "notes": "Spell row now sits above your items. Carry 3 spells (up to 6 with Arcane Focus) and swap them at shrines. Stash items stack, and stacks can be split." }
+{ "build": 23, "notes": "Skills now cost more points for each higher rank, so mastering the tree takes much longer (Arcane Focus spell slots cost 3, 4 and 5 points)." }

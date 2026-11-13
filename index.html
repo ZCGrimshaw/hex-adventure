@@ -384,28 +384,30 @@
   };
 
   const SKILLS = [
-    { id: 'str', br: 0, name: 'Strength', max: 5, cost: 1, d: (r) => '+' + 2 * r + ' attack' },
-    { id: 'tough', br: 0, name: 'Toughness', max: 5, cost: 1, d: (r) => '+' + 8 * r + ' max health' },
-    { id: 'skin', br: 0, name: 'Iron Skin', max: 5, cost: 1, d: (r) => '+' + r + ' defense' },
-    { id: 'crit', br: 0, name: 'Keen Eye', max: 5, cost: 1, d: (r) => '+' + Math.min(79, 4 * r) + '% critical hit chance' },
-    { id: 'wind', br: 0, name: 'Second Wind', max: 3, cost: 2, d: (r) => 'heal ' + 8 * r + '% of max health after every victory' },
-    { id: 'mind', br: 1, name: 'Arcane Mind', max: 5, cost: 1, d: (r) => '+' + 4 * r + ' max magic' },
-    { id: 'power', br: 1, name: 'Spell Power', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% spell damage and healing' },
-    { id: 'flow', br: 1, name: 'Mana Flow', max: 3, cost: 1, d: (r) => '+' + r + ' extra magic for every 2 tiles you reveal' },
-    { id: 'reach', br: 1, name: 'Long Reach', max: 2, cost: 2, d: (r) => 'map spells reach ' + Math.min(8, 3 + r) + ' tiles' },
-    { id: 'focus', br: 1, name: 'Arcane Focus', max: 3, cost: 2, d: (r) => '+' + Math.min(r, 3) + ' spell slot' + (r > 1 ? 's' : '') + ' (' + Math.min(6, 3 + r) + ' total)' },
-    { id: 'alchemy', br: 1, name: 'Alchemy', max: 1, cost: 1, d: (r) => 'craft magic potions from water and a crystal shard' },
-    { id: 'ward', br: 1, name: 'Arcane Ward', max: 3, cost: 2, d: (r) => 'take ' + Math.min(75, 8 * r) + '% less damage while you have magic left' },
-    { id: 'scav', br: 2, name: 'Scavenger', max: 5, cost: 1, d: (r) => '+' + 15 * r + '% gold from everything' },
-    { id: 'luck', br: 2, name: 'Lucky Finds', max: 3, cost: 1, d: (r) => '+' + 12 * r + '% chance of extra gear in chests' },
-    { id: 'mule', br: 2, name: 'Pack Mule', max: 2, cost: 2, d: (r) => '+' + Math.min(r, 8) + ' bag slots (bag can reach 14)' },
-    { id: 'flee', br: 2, name: 'Fleet Foot', max: 3, cost: 1, d: (r) => '+' + 10 * r + '% chance to run from battle' },
-    { id: 'trap', br: 2, name: 'Trap Sense', max: 2, cost: 1, d: (r) => r >= 2 ? 'traps cannot hurt you' : 'traps do half damage' },
-    { id: 'artisan', br: 2, name: 'Artisan', max: 3, cost: 1, d: (r) => ['', 'craft pickaxes and ladders', 'also craft rafts and crystal keys', 'also craft pack upgrades'][Math.min(r, 3)] },
-    { id: 'gems', br: 2, name: 'Gem Hunter', max: 1, cost: 3, d: (r) => 'more space gem veins in caves, +1 gem from every guardian and boss' },
+    { id: 'str', br: 0, name: 'Strength', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + 2 * r + ' attack' },
+    { id: 'tough', br: 0, name: 'Toughness', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + 8 * r + ' max health' },
+    { id: 'skin', br: 0, name: 'Iron Skin', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + r + ' defense' },
+    { id: 'crit', br: 0, name: 'Keen Eye', max: 5, cost: [1, 2, 2, 3, 3], d: (r) => '+' + Math.min(79, 4 * r) + '% critical hit chance' },
+    { id: 'wind', br: 0, name: 'Second Wind', max: 3, cost: [2, 3, 4], d: (r) => 'heal ' + 8 * r + '% of max health after every victory' },
+    { id: 'mind', br: 1, name: 'Arcane Mind', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + 4 * r + ' max magic' },
+    { id: 'power', br: 1, name: 'Spell Power', max: 5, cost: [1, 2, 2, 3, 3], d: (r) => '+' + 15 * r + '% spell damage and healing' },
+    { id: 'flow', br: 1, name: 'Mana Flow', max: 3, cost: [1, 2, 3], d: (r) => '+' + r + ' extra magic for every 2 tiles you reveal' },
+    { id: 'reach', br: 1, name: 'Long Reach', max: 2, cost: [2, 3], d: (r) => 'map spells reach ' + Math.min(8, 3 + r) + ' tiles' },
+    { id: 'focus', br: 1, name: 'Arcane Focus', max: 3, cost: [3, 4, 5], d: (r) => '+' + Math.min(r, 3) + ' spell slot' + (r > 1 ? 's' : '') + ' (' + Math.min(6, 3 + r) + ' total)' },
+    { id: 'alchemy', br: 1, name: 'Alchemy', max: 1, cost: [2], d: (r) => 'craft magic potions from water and a crystal shard' },
+    { id: 'ward', br: 1, name: 'Arcane Ward', max: 3, cost: [2, 3, 4], d: (r) => 'take ' + Math.min(75, 8 * r) + '% less damage while you have magic left' },
+    { id: 'scav', br: 2, name: 'Scavenger', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + 15 * r + '% gold from everything' },
+    { id: 'luck', br: 2, name: 'Lucky Finds', max: 3, cost: [1, 2, 3], d: (r) => '+' + 12 * r + '% chance of extra gear in chests' },
+    { id: 'mule', br: 2, name: 'Pack Mule', max: 2, cost: [2, 3], d: (r) => '+' + Math.min(r, 8) + ' bag slots (bag can reach 14)' },
+    { id: 'flee', br: 2, name: 'Fleet Foot', max: 3, cost: [1, 2, 3], d: (r) => '+' + 10 * r + '% chance to run from battle' },
+    { id: 'trap', br: 2, name: 'Trap Sense', max: 2, cost: [1, 2], d: (r) => r >= 2 ? 'traps cannot hurt you' : 'traps do half damage' },
+    { id: 'artisan', br: 2, name: 'Artisan', max: 3, cost: [2, 3, 4], d: (r) => ['', 'craft pickaxes and ladders', 'also craft rafts and crystal keys', 'also craft pack upgrades'][Math.min(r, 3)] },
+    { id: 'gems', br: 2, name: 'Gem Hunter', max: 1, cost: [4], d: (r) => 'more space gem veins in caves, +1 gem from every guardian and boss' },
   ];
   const BRANCH = [['WARRIOR', '#ff8a6a'], ['MAGE', '#b89aff'], ['EXPLORER', '#7dff8f']];
   const skCur = (id) => (P && P.sk && P.sk[id]) || 0;
+  // each rank can cost more than the last: skillCost(s, ranksAlreadyLearned)
+  const skillCost = (s, rank) => Array.isArray(s.cost) ? s.cost[Math.min(rank, s.cost.length - 1)] : s.cost;
   const sk = (id) => skCur(id) + ((P && P.lock && P.lock[id]) || 0); // ranks in the tree now + ranks locked in by awakenings
   const goldMul = () => 1 + .15 * sk('scav');
   const gm = (x) => Math.round(x * goldMul());
@@ -413,8 +415,9 @@
   const spMul = () => 1 + .15 * sk('power');
   function learnSkill(id) {
     const s = SKILLS.find(x => x.id === id); if (!s) return false;
-    if (skCur(id) >= s.max || P.sp < s.cost) return false;
-    P.sp -= s.cost; P.sk[id] = skCur(id) + 1;
+    const c = skillCost(s, skCur(id));
+    if (skCur(id) >= s.max || P.sp < c) return false;
+    P.sp -= c; P.sk[id] = skCur(id) + 1;
     if (id === 'tough') P.hp += 8; if (id === 'mind') P.mp += 4; if (id === 'mule') P.bagCap = Math.min(14, P.bagCap + 1);
     if (id === 'focus') fillLoadout();
     hudDirty = true;
@@ -556,7 +559,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 22;
+  const BUILD = 23;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -2963,11 +2966,11 @@
     BRANCH.forEach(([bn, col], bi) => {
       h += '<div class="branch"><h3 style="color:' + col + '">' + bn + '</h3>';
       for (const x of SKILLS.filter(x => x.br === bi)) {
-        const r = skCur(x.id), lk = (P.lock && P.lock[x.id]) || 0, maxed = r >= x.max, can = !maxed && P.sp >= x.cost;
+        const r = skCur(x.id), lk = (P.lock && P.lock[x.id]) || 0, maxed = r >= x.max, nc = skillCost(x, r), can = !maxed && P.sp >= nc;
         h += '<div class="sk' + (maxed ? ' maxed' : '') + '"><span class="rk">' + r + '/' + x.max + '</span><b style="color:' + col + '">' + x.name + '</b>' +
           '<div class="pips">' + Array.from({ length: x.max }, (_, i) => '<i class="' + (i < r ? 'on' : '') + '"></i>').join('') + '</div>' +
           (r + lk ? '<div>Now: ' + x.d(r + lk) + '</div>' : '') + (maxed ? '<div class="nx">Mastered</div>' : '<div class="nx">Next: ' + x.d(r + lk + 1) + '</div>' +
-          '<button class="act' + (can ? '' : ' off') + '" data-sk="' + x.id + '">Learn<small>' + x.cost + ' point' + (x.cost > 1 ? 's' : '') + '</small></button>') + '</div>';
+          '<button class="act' + (can ? '' : ' off') + '" data-sk="' + x.id + '">Learn<small>' + nc + ' point' + (nc > 1 ? 's' : '') + '</small></button>') + '</div>';
       }
       h += '</div>';
     });
