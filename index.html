@@ -189,6 +189,7 @@
 <div id="awaken" class="modal"></div>
 <div id="gmenu" class="modal"><div class="bx" id="menuBox" style="width:min(760px,96vw)"></div></div>
 <div id="spellbook" class="modal"><div class="bx" id="bookBox" style="width:min(560px,95vw)"></div></div>
+<div id="shop" class="modal"><div class="bx" id="shopBox" style="width:min(940px,96vw);border-color:#ffd23a"></div></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
 <div id="skills" class="modal"><div class="bx" id="skillsBox" style="width:min(860px,96vw)"></div></div>
@@ -437,6 +438,14 @@
     return true;
   }
   // every skill mastered: the ranks are locked in for good, the tree starts fresh, and level-ups cost 1.5x more XP per awakening
+  // Draught of Rebirth (rare shop item): refund every point spent in the current tree
+  const skillSpent = () => SKILLS.reduce((n, x) => { for (let i = 0; i < skCur(x.id); i++) n += skillCost(x, i); return n; }, 0);
+  const respecBlock = () => !skillSpent() ? 'No skills to reset' : bagUsed() > P.bagCap - skCur('mule') ? 'Free some bag space first' : '';
+  function respecSkills() {
+    if (respecBlock()) return false;
+    P.sp += skillSpent(); P.bagCap = Math.max(6, P.bagCap - skCur('mule')); P.sk = {};
+    tidyLoadout(); P.hp = Math.min(P.hp, maxHP()); P.mp = Math.min(P.mp, maxMP()); hudDirty = true; return true;
+  }
   function awaken() {
     P.lock = P.lock || {};
     for (const x of SKILLS) P.lock[x.id] = (P.lock[x.id] || 0) + x.max;
@@ -532,7 +541,7 @@
     d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
-    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
     return d;
@@ -571,7 +580,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 27;
+  const BUILD = 28;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -608,7 +617,7 @@
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
-    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
+    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
@@ -731,7 +740,8 @@
         (() => { const g = makeGear(d, 1); return { it: g, price: 25 + g.tier * 18 }; })(),
         ...(rnd() < .55 ? [{ special: 'tome', price: 90 + Math.floor(d * 1.2) }] : []),
         ...(rnd() < .5 ? [{ special: 'scroll', price: 55 + Math.floor(d / 2) }] : []),
-        ...(rnd() < .35 ? [{ it: { kind: 'item', id: 'bridge' }, price: 20 + Math.floor(d / 8) }] : [])]; break;
+        ...(rnd() < .35 ? [{ it: { kind: 'item', id: 'bridge' }, price: 20 + Math.floor(d / 8) }] : []),
+        ...(d >= 30 && rnd() < .16 ? [{ special: 'respec', price: 240 + Math.floor(d * 2) }] : [])]; break;
       default: t.type = type;
     }
     return t;
@@ -740,10 +750,12 @@
   const caveFull = () => !!S.cave && S.cave.n >= S.cave.max;
   const mistCap = () => !S.cave && !!S.boss && !S.boss.dead && S.revealed >= S.boss.cap;
   const curD = () => S.cave ? S.cave.d + S.cave.n : S.revealed;
+  const gemBal = () => S.gems - (S.gemsSpent || 0);
   function addGems(n, why) {
     S.gems += n; stats.gemsFound = (stats.gemsFound || 0) + n; hudDirty = true;
     const w = toWorld(guy.q, guy.r); burst(w.x, w.y - 16, 30, ['#e07aff', '#5ad8ff', '#ffffff'], 50, -40, 20);
-    toast('+' + n + ' SPACE GEM' + (n > 1 ? 'S' : '') + '! ' + (why || '') + ' (' + S.gems + ' total)');
+    toast('+' + n + ' SPACE GEM' + (n > 1 ? 'S' : '') + '! ' + (why || '') + ' (' + gemBal() + ' to spend)');
+    if (!S.gemTip) { S.gemTip = true; later(() => toast('Space gems: spend 1 to rest fully at a shrine. Every gem you find also counts toward your leaderboard score, and spending never lowers it.'), 2600); }
   }
   function enterCave(t) {
     const d = S.revealed + 12;
@@ -1025,8 +1037,12 @@
       A.push({ label: pk ? 'Chip out space gem' : 'Pry the gem loose', sub: pk ? 'your pickaxe makes it safe' : 'risky by hand: it might crack', better: true, run() {
         t.type = 'rubble'; if (pk || rnd() < .6) addGems(1, 'Mined from the vein.'); else { t.loot.push({ kind: 'item', id: 'crystal' }); toast('The gem cracks into an ordinary crystal shard... a pickaxe would have saved it'); } } });
     }
-    if (t.type === 'shrine') A.push({ label: 'Rest', sub: 'full heal, but a monster stirs nearby', off: P.hp >= maxHP() && P.mp >= maxMP() && 'Already fully rested', run() {
-      P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; toast('You rest at the shrine and feel restored'); later(spawnMist, 1200); } });
+    if (t.type === 'shrine') { const fr = S.freeRests > 0, gb = gemBal() > 0;
+      A.push({ label: 'Rest', sub: (fr ? 'full heal, free (' + S.freeRests + ' free rest' + (S.freeRests > 1 ? 's' : '') + ' left)' : gb ? 'full heal for 1 space gem' : 'no gems: you only recover half') + ', but a monster stirs nearby', off: P.hp >= maxHP() && P.mp >= maxMP() && 'Already fully rested', run() {
+        if (fr) { S.freeRests--; P.hp = maxHP(); P.mp = maxMP(); toast('You rest at the shrine and feel restored (' + S.freeRests + ' free rest' + (S.freeRests === 1 ? '' : 's') + ' left)'); }
+        else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
+        else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
+        if (pet) pet.hp = pet.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
@@ -1041,15 +1057,7 @@
       if (t.fish > 0) gather('Catch fish', t.fish + ' left', 'fish', () => { t.fish--; t.fishAt = gt + 60; });
       gather('Draw water', 'magic, or douse fire', 'water', () => {});
     }
-    if (t.type === 'merchant') t.stock.forEach((s) => {
-      if (s.special) { const tome = s.special === 'tome';
-        A.push({ label: tome ? 'Buy Tome of Insight' : 'Buy Spell Scroll', sub: s.price + ' gold · ' + (tome ? '+1 skill point' : 'learn a new spell, or strengthen one'), buy: true, off: P.gold < s.price && 'Need ' + s.price + ' gold',
-          run() { P.gold -= s.price; t.stock.splice(t.stock.indexOf(s), 1); if (tome) { P.sp++; toast('You study the tome: +1 skill point (press K)'); } else learnSpell(); hudDirty = true; } }); return; }
-      const it = s.it, nm = it.kind === 'gear' ? it.name : ITEMS[it.id].name;
-      A.push({ label: 'Buy ' + nm, sub: s.price + ' gold' + (it.kind === 'gear' ? ' · ' + gearDesc(it) : ''), buy: true,
-        off: (P.gold < s.price && 'Need ' + s.price + ' gold') || (it.kind === 'item' && full(isize(it.id))),
-        run() { P.gold -= s.price; t.stock.splice(t.stock.indexOf(s), 1); if (it.kind === 'item') giveItem(it.id); else { t.loot.push(it); equipFrom(t, t.loot.length - 1); } toast('Bought ' + nm); } });
-    });
+    if (t.type === 'merchant') A.push({ label: 'Open shop', sub: t.stock.length + ' for sale · sell your spare items', hot: true, run() { openShop(); } });
     t.loot.slice(0, 4).forEach((it) => {
       const drop = () => { t.loot.splice(t.loot.indexOf(it), 1); if (!t.loot.length) t.grave = false; };
       if (it.kind === 'item') A.push({ label: 'Take ' + ITEMS[it.id].name, sub: ITEMS[it.id].d, off: full(isize(it.id)), run() { giveItem(it.id); drop(); } });
@@ -2620,7 +2628,7 @@
     if (shoot) { shoot.t += dt; for (let i = 0; i < 10; i++) { ctx.globalAlpha = (1 - i / 10) * (1 - shoot.t / .7); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(shoot.x + shoot.t * 240 - i * 3), Math.round(shoot.y + shoot.t * 90 - i * 1.1), 1, 1); } ctx.globalAlpha = 1; if (shoot.t > .7) shoot = null; }
 
     let hoverT = null, hoverC = null;
-    const busy = B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || hallOpen;
+    const busy = B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || shopOpen || hallOpen;
     if (sel && (S.state !== 'play' || busy || !(tiles.has(key(sel.q, sel.r)) || isCand(sel.q, sel.r)))) sel = null;
     const hcell = sel || (mouse.x > -900 ? cellAtMouse() : null);
     if (S.state === 'play' && !busy && hcell) { const c = hcell, k = key(c.q, c.r); if (tiles.has(k)) hoverT = tiles.get(k); else if (isCand(c.q, c.r)) hoverC = c; }
@@ -2835,7 +2843,7 @@
     if (TEST) return;
     let sk = ''; for (let i = 0; i < 5; i++) sk += img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
     const mh = maxHP(), mm = maxMP(), xn = xpNeed(P.lvl);
-    let st = '<div class="hdr"><div class="skulls" title="Deaths. Five skulls ends the run">' + sk + '</div><div class="gems" title="Space gems: your leaderboard score (best ' + bestGems + ')">' + img(ICONURL.gem) + '<b>' + S.gems + '</b></div></div>' +
+    let st = '<div class="hdr"><div class="skulls" title="Deaths. Five skulls ends the run">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
       '<div class="bar big hp"><i style="width:' + pct(P.hp, mh) + '"></i><span>HP ' + P.hp + ' / ' + mh + '</span></div>' +
       '<div class="bar big mp"><i style="width:' + pct(P.mp, mm) + '"></i><span>MP ' + P.mp + ' / ' + mm + '</span></div>' +
       '<div class="minline">Lv ' + P.lvl + ' &middot; ' + S.revealed + ' tiles &middot; ' + P.gold + ' gold</div>' +
@@ -2944,7 +2952,7 @@
   function runSummary() {
     const types = {}; for (const t of tiles.values()) types[t.type] = (types[t.type] || 0) + 1;
     return { game: 'Hex Adventure', build: BUILD, exportedAt: new Date().toISOString(), device: { ua: navigator.userAgent, screen: innerWidth + 'x' + innerHeight, dpr: window.devicePixelRatio, zoom: scale },
-      run: { tilesRevealed: S.revealed, deaths: S.deaths, gems: S.gems, minutes: Math.round((Date.now() - S.t0) / 6000) / 10, inCave: !!S.cave, position: { q: guy.q, r: guy.r }, nextBossAt: S.nextBoss, bossesSlain: S.bossN, lastShrineAt: S.lastShrine, nextShopAt: S.nextShop, stashCap: S.stashCap, stashItems: S.stash.length },
+      run: { tilesRevealed: S.revealed, deaths: S.deaths, gems: S.gems, gemsSpent: S.gemsSpent || 0, freeRestsLeft: S.freeRests, minutes: Math.round((Date.now() - S.t0) / 6000) / 10, inCave: !!S.cave, position: { q: guy.q, r: guy.r }, nextBossAt: S.nextBoss, bossesSlain: S.bossN, lastShrineAt: S.lastShrine, nextShopAt: S.nextShop, stashCap: S.stashCap, stashItems: S.stash.length },
       player: { level: P.lvl, xp: P.xp, hp: P.hp, maxHp: maxHP(), mp: P.mp, maxMp: maxMP(), attack: pAtk(), defense: pDef(), gold: P.gold, skillPoints: P.sp, awakenings: P.awk || 0, skills: P.sk, lockedSkills: P.lock, spells: P.spells, spellLoadout: P.loadout, spellSlots: spellSlots(), bag: P.bag, bagCap: P.bagCap, equipment: P.eq },
       stash: S.stash, stats, tileTypeCounts: types, monstersOnMap: mons.size };
   }
@@ -2961,7 +2969,8 @@
       hd('Shrines') + li(['Shrines are checkpoints. Monsters cannot attack you on one. Rest to heal fully, open your stash (it is safe when you die), and swap your carried spells in the Spellbook.', 'They appear more often when you are hurt or your bag is full, and always after a long stretch.']) +
       hd('Growing stronger') + li(['You gain a skill point every level and 2 from each boss. Higher ranks of a skill cost more points. Master every skill for an <b>Awakening</b>: your bonuses lock in, the tree resets, and levels need 1.5x more XP.', 'You can learn many spells but carry only 3 (up to 6 with Arcane Focus).', 'Gear drops from chests, monsters and shops. Compare before you equip, and reinforce armor with iron.']) +
       hd('Crafting') + li(['Press C. Rope, torch, bridge, bomb and health potion are always open. Pickaxe, ladder, raft, crystal key, pack upgrade and magic potion unlock with the <b>Artisan</b> and <b>Alchemy</b> skills.', 'At a shrine, crafting also uses materials from your stash.']) +
-      hd('Shops and keys') + li(['A shop appears every so often. Spend gold on potions, gear, spell scrolls, tomes (+1 skill point) and more.', 'A locked vault needs an <b>old key</b>, which powerful monsters drop: elites, cave guardians, bosses, trolls, golems, demons and dragons.']) +
+      hd('Space gems') + li(['Gems come from caves and from slain guardians and bosses.', '<b>Spend:</b> one gem pays for a full rest at a shrine (your first 3 rests are free; with no gem you only recover half).', '<b>Score:</b> every gem you find counts toward your Hall of Greats score. Spending a gem never lowers it.']) +
+      hd('Shops and keys') + li(['A shop appears every so often. Open it to buy and sell in its own window: potions, gear, spell scrolls, tomes (+1 skill point), and rarely a Draught of Rebirth that resets your skills.', 'A locked vault needs an <b>old key</b>, which powerful monsters drop: elites, cave guardians, bosses, trolls, golems, demons and dragons.']) +
       hd('Bosses and caves') + li(['Every so often a lair appears and a mist blocks the way until you open it (wardens, braziers or an offering) and defeat the boss.', 'Caves are dark: light a torch to go in. They hold gem veins and a guardian. Climb the rope to leave.']) +
       hd('Things you will meet') + '<table style="width:100%;font-size:13px;border-collapse:collapse">' + Object.keys(HINT).map(k => '<tr><td style="padding:2px 6px 2px 0;color:#9fe8ff;white-space:nowrap;vertical-align:top;text-transform:capitalize">' + k + '</td><td style="padding:2px 0;border-bottom:1px solid #22332a">' + HINT[k] + '</td></tr>').join('') + '</table>' +
       hd('Items') + '<table style="width:100%;font-size:13px;border-collapse:collapse">' + Object.keys(ITEMS).map(k => '<tr><td style="padding:2px 6px 2px 0;white-space:nowrap;vertical-align:top"><b>' + ITEMS[k].name + '</b></td><td style="padding:2px 0;border-bottom:1px solid #22332a">' + ITEMS[k].d + '</td></tr>').join('') + '</table>';
@@ -2989,6 +2998,55 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fb); else fb(); return; }
     if (t.closest('#exDl')) { download(nm + '-summary.json', exportText()); return toast('Summary downloaded'); }
     if (t.closest('#exFull')) { download(nm + '-save.json', exportFull()); return toast('Full save downloaded'); }
+  };
+  // ---------- shop window ----------
+  let shopOpen = false, shopArm = null;
+  const SELLV = { berries: 2, meat: 3, fish: 4, cooked: 6, water: 2, wood: 2, stone: 2, vine: 2, flint: 3, iron: 6, crystal: 14, hide: 8, hpot: 18, mpot: 18, bomb: 14, torch: 7, rope: 6, pickaxe: 24, ladder: 12, raft: 18, ckey: 40, pack: 40, bridge: 10, key: 60 };
+  const sellPrice = (e) => typeof e === 'string' ? (SELLV[e] || 3) : 6 + Math.round(gpower(e) * 3.5);
+  const shopTile = () => { const t = curTile(); return t && t.type === 'merchant' ? t : null; };
+  function openShop() { if (TEST || B || S.state !== 'play' || !shopTile()) return; shopOpen = true; shopArm = null; $('shop').style.display = 'flex'; renderShop(); }
+  function closeShop() { shopOpen = false; $('shop').style.display = 'none'; hudDirty = true; }
+  function renderShop() {
+    if (TEST || !shopOpen) return; const t = shopTile(); if (!t) return closeShop();
+    const row = (ico, name, desc, btn) => '<div class="rec" style="align-items:center">' + ico + '<span class="grow"><b>' + name + '</b><br><span style="opacity:.8;font-size:12px">' + desc + '</span></span>' + btn + '</div>';
+    const im = (u) => '<img src="' + u + '" style="width:40px;height:40px;image-rendering:pixelated">', em = (c) => '<span style="font-size:30px;width:40px;text-align:center">' + c + '</span>';
+    let buy = '', sell = '';
+    t.stock.forEach((s, i) => {
+      const lack = P.gold < s.price && 'Need ' + s.price + ' gold';
+      let ico, name, desc, off = lack;
+      if (s.special === 'tome') { ico = em('&#128214;'); name = 'Tome of Insight'; desc = '+1 skill point'; }
+      else if (s.special === 'scroll') { ico = em('&#128220;'); name = 'Spell Scroll'; desc = 'learn a new spell, or strengthen one you know'; }
+      else if (s.special === 'respec') { ico = em('&#9851;'); name = 'Draught of Rebirth <span style="color:#ffd23a">RARE</span>'; desc = 'Refunds every skill point in your tree so you can spend them again (awakened bonuses stay)'; off = off || respecBlock(); }
+      else if (s.it.kind === 'gear') { const g = s.it, cur = g.slot === 'ring' ? (gpower(P.eq.ring1) <= gpower(P.eq.ring2) ? P.eq.ring1 : P.eq.ring2) : P.eq[g.slot];
+        ico = im(gearIconURL(g)); name = '<span data-sg="' + i + '" style="cursor:pointer;text-decoration:underline dotted;color:' + g.col + '">' + g.name + '</span>' + (gpower(g) > gpower(cur) ? ' <span style="color:#7dff8f">&#9650; upgrade</span>' : ''); desc = gearDesc(g) + (cur ? ' (wearing: ' + gearDesc(cur) + ')' : '') + ' &middot; click the name to compare'; }
+      else { ico = im(ICONURL[s.it.id]); name = ITEMS[s.it.id].name; desc = ITEMS[s.it.id].d; off = off || (bagUsed() + isize(s.it.id) > P.bagCap && 'Bag full'); }
+      buy += row(ico, name, desc, '<button class="act buy' + (off ? ' off' : '') + '" data-by="' + i + '">' + (shopArm === i ? 'Tap again<small>to confirm</small>' : s.price + ' gold<small>' + (off || 'buy') + '</small>') + '</button>');
+    });
+    if (!t.stock.length) buy = '<div class="note">Sold out. Come back for the next shop on your travels.</div>';
+    P.bag.forEach((e, i) => {
+      const g = typeof e !== 'string', p = sellPrice(e);
+      sell += row(g ? im(gearIconURL(e)) : im(ICONURL[e]), g ? '<span data-sbi="' + i + '" style="cursor:pointer;text-decoration:underline dotted;color:' + e.col + '">' + e.name + '</span>' : ITEMS[e].name, g ? gearDesc(e) : ITEMS[e].d, '<button class="act alt" data-sl="' + i + '">Sell<small>' + p + ' gold</small></button>');
+    });
+    if (!P.bag.length) sell = '<div class="note">Your bag is empty. Gear and items in your bag can be sold here.</div>';
+    $('shopBox').innerHTML = '<h2 style="color:#ffd23a;letter-spacing:3px">TRAVELLING SHOP</h2><div style="display:flex;justify-content:center;gap:18px;margin-bottom:8px;font-size:15px"><span>Gold <b style="color:#ffd23a">' + P.gold + '</b></span><span>Bag <b>' + bagUsed() + ' / ' + P.bagCap + '</b></span><span>Skill points <b>' + P.sp + '</b></span></div>' +
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;text-align:left"><div style="flex:1 1 340px"><div class="sec"><span>FOR SALE</span><span>' + t.stock.length + '</span></div>' + buy + '</div><div style="flex:1 1 300px"><div class="sec"><span>SELL FROM YOUR BAG</span><span>' + P.bag.length + '</span></div>' + sell + '</div></div>' +
+      '<div style="text-align:center;margin-top:10px"><button class="act" id="shClose">Leave shop</button></div>';
+  }
+  if (!TEST) $('shopBox').onclick = (e) => {
+    const t = shopTile(), tg = e.target; if (tg.closest('#shClose') || !t) return closeShop();
+    const sg = tg.closest('[data-sg]'); if (sg) { const g = t.stock[+sg.dataset.sg].it; return inspectGear(g, t.stock.filter(x => x.it && x.it.kind === 'gear').map(x => x.it)); }
+    const sb = tg.closest('[data-sbi]'); if (sb) { const g = P.bag[+sb.dataset.sbi]; return inspectGear(g, P.bag.filter(x => typeof x !== 'string')); }
+    const sl = tg.closest('[data-sl]'); if (sl) { const i = +sl.dataset.sl, e2 = P.bag[i]; if (e2 === undefined) return; const p = sellPrice(e2); P.gold += p; P.bag.splice(i, 1); toast('Sold ' + (typeof e2 === 'string' ? ITEMS[e2].name : e2.name) + ' for ' + p + ' gold'); hudDirty = true; return renderShop(); }
+    const by = tg.closest('[data-by]'); if (!by || by.classList.contains('off')) return;
+    const i = +by.dataset.by, s = t.stock[i]; if (!s || P.gold < s.price) return;
+    if (s.special === 'respec' && shopArm !== i) { shopArm = i; return renderShop(); }
+    shopArm = null; P.gold -= s.price; t.stock.splice(i, 1);
+    if (s.special === 'tome') { P.sp++; toast('You study the tome: +1 skill point (press K)'); }
+    else if (s.special === 'scroll') learnSpell();
+    else if (s.special === 'respec') { respecSkills(); toast('Your skills dissolve and all your points return (press K)'); }
+    else if (s.it.kind === 'item') { giveItem(s.it.id); toast('Bought ' + ITEMS[s.it.id].name); }
+    else { const g = s.it; if (bagUsed() + 2 <= P.bagCap) { P.bag.push(g); toast('Bought ' + g.name + ' (in your bag)'); } else { t.loot.push(g); equipFrom(t, t.loot.length - 1); toast('Bought and equipped ' + g.name); } }
+    hudDirty = true; renderShop();
   };
   // ---------- spellbook ----------
   let bookOpen = false;
@@ -3148,7 +3206,7 @@
     }
   }
   function tapAt(touch) {
-    if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || hallOpen) { sel = null; return; }
+    if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || shopOpen || hallOpen) { sel = null; return; }
     const c = cellAtMouse();
     sel = null; act(c, !!touch); // one tap is enough, on touch screens too
   }
@@ -3200,7 +3258,7 @@
     if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen && !bookOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
     if ((e.key === 'c' || e.key === 'C') && !B && S.state === 'play' && !stashOpen && !skillsOpen) { craftOpen ? closeCraft() : openCraft(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;
-    if (e.key === 'Escape') { if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
+    if (e.key === 'Escape') { if (inspectOpen) closeInspect(); else if (shopOpen) closeShop(); if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
   if (!TEST) $('inspect').addEventListener('click', (e) => { if (e.target.closest('[data-ieq]')) { const g = inspList[inspIdx], ct = curTile(), i = ct ? ct.loot.indexOf(g) : -1;
       if (i >= 0) { equipFrom(ct, i); if (!ct.loot.length) ct.grave = false; toast('Equipped ' + g.name); } else if (P.bag.indexOf(g) >= 0) equipBag(P.bag.indexOf(g)); closeInspect(); hudDirty = true; return; }
