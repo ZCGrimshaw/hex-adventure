@@ -580,7 +580,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 28;
+  const BUILD = 29;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -1603,11 +1603,20 @@
     guy.target = { q, r }; let n = 0;
     while (guy.target && !B && S.state === 'play' && n++ < 999) { chooseMove(); if (guy.mv) finishStep(); }
   }
+  let lastScent = -99;
   function roamTick() {
     const pt = curTile();
     for (const m of [...mons.values()]) {
+      // every ordinary monster you have discovered eventually catches your scent and starts hunting you
+      if (!m.roam && !S.cave && !m.boss && !m.warden && !m.mist && !m.guardian && m.base !== MIMIC) {
+        if (m.hunt === undefined) m.hunt = gt + 90 + rnd() * 60;
+        else if (gt >= m.hunt) {
+          if (hd(m.q - guy.q, m.r - guy.r) <= 12) { m.roam = true; m.hunted = true; m.cool = 0; if (gt - lastScent > 20) { lastScent = gt; toast(m.name + ' has picked up your trail and is hunting you!'); } }
+          else m.hunt = gt + 25;
+        }
+      }
       if (!m.roam || gt < m.cool) continue;
-      const dist = hd(m.q - guy.q, m.r - guy.r); if (dist > 5) continue;
+      const dist = hd(m.q - guy.q, m.r - guy.r); if (dist > (m.hunted ? 14 : 5)) continue;
       if (dist <= 1) { if (pt.type !== 'shrine' && !guy.mv && !stashOpen && !craftOpen) { toast(m.name + ' hunts you down!'); startBattle(m, 'ambush'); return; } continue; }
       let bq = null, bd = dist;
       for (const [dq, dr] of DIRS) {
