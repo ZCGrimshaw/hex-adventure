@@ -587,7 +587,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 33;
+  const BUILD = 34;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -621,7 +621,7 @@
     if (ab) { if (!abandonArm) { abandonArm = true; ab.innerHTML = 'Tap again to end it<small>this cannot be undone</small>'; return; } closeHall(); gameOver('ended'); }
   };
 
-  const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
+  const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, steps: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
   function newGame(noOnline) {
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
@@ -1575,7 +1575,7 @@
     const secs = Math.floor((Date.now() - S.t0) / 1000);
     const rows = [['Space gems', S.gems], ['Tiles revealed', S.revealed + (isBest ? ' (new best!)' : '')], ['Best ever', best], ['Bosses slain', stats.bosses], ['Caves explored', stats.caves + ' (' + stats.caveTiles + ' cave tiles)'], ['Cave guardians slain', stats.guardians], ['Monsters slain', stats.kills], ['Elites slain', stats.elites], ['Level reached', P.lvl], ['Skill ranks learned', Object.values(P.sk).reduce((a, b) => a + b, 0)],
       ['Puzzles solved', stats.puzzles], ['Items crafted', stats.crafted], ['Bears befriended', stats.bears], ['Cliff lookouts', stats.lookouts], ['Gold collected', stats.gold], ['Chests opened', stats.chests],
-      ['Checkpoints found', stats.shrines], ['Farthest from start', stats.far + ' tiles'], ['Damage dealt', stats.dealt], ['Damage taken', stats.taken], ['Spells cast', stats.spells],
+      ['Checkpoints found', stats.shrines], ['Steps walked', stats.steps], ['Farthest from start', stats.far + ' tiles'], ['Damage dealt', stats.dealt], ['Damage taken', stats.taken], ['Spells cast', stats.spells],
       ['Items used', stats.items], ['Traps sprung', stats.traps], ['Battles fled', stats.fled], ['Time', Math.floor(secs / 60) + 'm ' + (secs % 60) + 's']];
     if (TEST) return;
     const sk = '<img class="px" src="' + ICONURL.skull + '" style="width:30px;height:30px">';
@@ -1648,6 +1648,7 @@
   function finishStep() {
     const mv = guy.mv; guy.prev = mv.from; if (pet) { pet.q = mv.from.q; pet.r = mv.from.r; }
     guy.q = mv.to.q; guy.r = mv.to.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null;
+    stats.steps++;
     onEnter(curTile()); hudDirty = true;
   }
   function walkInstant(q, r) { // test helper
@@ -3027,7 +3028,7 @@
   function runSummary() {
     const types = {}; for (const t of tiles.values()) types[t.type] = (types[t.type] || 0) + 1;
     return { game: 'Hex Adventure', build: BUILD, exportedAt: new Date().toISOString(), device: { ua: navigator.userAgent, screen: innerWidth + 'x' + innerHeight, dpr: window.devicePixelRatio, zoom: scale },
-      run: { tilesRevealed: S.revealed, deaths: S.deaths, gems: S.gems, gemsSpent: S.gemsSpent || 0, freeRestsLeft: S.freeRests, minutes: Math.round((Date.now() - S.t0) / 6000) / 10, inCave: !!S.cave, position: { q: guy.q, r: guy.r }, nextBossAt: S.nextBoss, bossesSlain: S.bossN, lastShrineAt: S.lastShrine, nextShopAt: S.nextShop, stashCap: S.stashCap, stashItems: S.stash.length },
+      run: { tilesRevealed: S.revealed, stepsWalked: stats.steps, deaths: S.deaths, gems: S.gems, gemsSpent: S.gemsSpent || 0, freeRestsLeft: S.freeRests, minutes: Math.round((Date.now() - S.t0) / 6000) / 10, inCave: !!S.cave, position: { q: guy.q, r: guy.r }, nextBossAt: S.nextBoss, bossesSlain: S.bossN, lastShrineAt: S.lastShrine, nextShopAt: S.nextShop, stashCap: S.stashCap, stashItems: S.stash.length },
       player: { level: P.lvl, xp: P.xp, hp: P.hp, maxHp: maxHP(), mp: P.mp, maxMp: maxMP(), attack: pAtk(), defense: pDef(), gold: P.gold, skillPoints: P.sp, awakenings: P.awk || 0, skills: P.sk, lockedSkills: P.lock, spells: P.spells, spellLoadout: P.loadout, spellSlots: spellSlots(), bag: P.bag, bagCap: P.bagCap, equipment: P.eq },
       stash: S.stash, stats, tileTypeCounts: types, monstersOnMap: mons.size };
   }

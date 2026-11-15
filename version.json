@@ -1,1 +1,1 @@
-{ "build": 33, "notes": "Updates are now automatic: the game pauses, saves, and asks you to update to continue." }
+{ "build": 34, "notes": "The end-of-run summary now counts steps walked, separate from tiles revealed." }
