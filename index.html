@@ -85,8 +85,9 @@
   #over table { width:100%; border-collapse:collapse; font-size:14px; margin:8px 0 12px; }
   #over td { padding:3px 6px; border-bottom:1px solid #22332a; font-size:12px; } #over td:nth-child(2), #over td:nth-child(4) { text-align:right; font-weight:700; } #over td:nth-child(3) { padding-left:16px; } #over .bx { width:min(680px,95vw); }
   :root { --uz: 1; }
-  #upd { position:fixed; left:50%; top:12px; transform:translateX(-50%); z-index:30; zoom:var(--uz); background:linear-gradient(#2a2410,#14100a); border:2px solid #ffd23a; border-radius:8px; padding:10px 14px; display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; box-shadow:0 0 18px #ffd23a55; font-size:12px; max-width:420px; }
-  #upd b { color:#ffe14a; font-size:14px; } #upd .act { min-width:0; } #upd span { font-weight:400; }
+  #upd { position:fixed; inset:0; z-index:95; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.84); }
+  #upd .ub { zoom:var(--uz); background:linear-gradient(#2a2410,#14100a); border:2px solid #ffd23a; border-radius:10px; padding:16px 20px; display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; box-shadow:0 0 24px #ffd23a66; font-size:13px; max-width:min(440px,92vw); }
+  #upd b { color:#ffe14a; font-size:17px; letter-spacing:1px; } #upd .act { min-width:0; } #upd span { font-weight:400; }
   .hog { width:100%; border-collapse:collapse; font-size:13px; margin:6px 0; }
   .hog th { text-align:left; font-size:11px; color:#8fa898; font-weight:700; padding:3px 6px; border-bottom:1px solid #45624f; }
   .hog td { padding:4px 6px; border-bottom:1px solid #1e2c24; font-weight:400; } .hog td.n { text-align:right; font-weight:700; } .hog th.n { text-align:right; }
@@ -586,21 +587,23 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 32;
-  let updT = 0, updShown = false;
+  const BUILD = 33;
+  let updT = 0, updShown = false, updBlock = false;
+  // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
+  const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
-    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j && +j.build > BUILD && !updShown) showUpdate(j); }).catch(() => {});
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j && +j.build > BUILD && !updShown && !triedUpd(j.build)) showUpdate(j); }).catch(() => {});
   }
+  // a new version pauses and saves the run, then the only way on is to update (the run carries on after the reload)
   function showUpdate(j) {
-    updShown = true;
+    updShown = true; updBlock = true; aim = null; sel = null; guy.target = null; guy.pending = null;
+    saveNow();
     const el = document.createElement('div'); el.id = 'upd';
-    el.innerHTML = '<b>A new version of Hex Adventure is ready</b>' + (j.notes ? '<span>' + esc(j.notes) + '</span>' : '') + '<span>Your run is saved and carries on right where you are.</span><button class="act buy" id="updGo">Save &amp; update</button><button class="act off" id="updLater">Later</button>';
+    el.innerHTML = '<div class="ub"><b>NEW VERSION READY</b>' + (j.notes ? '<span>' + esc(j.notes) + '</span>' : '') + '<span style="opacity:.85">The game is paused and your run is saved. Update to carry on right where you are.</span><button class="act buy" id="updGo">Update to continue</button></div>';
     document.body.appendChild(el);
-    $('updLater').onclick = () => { el.remove(); updShown = false; updT = -600; };
     $('updGo').onclick = () => {
-      if (B) { toast('Finish your battle first, then update'); return; }
-      $('updGo').textContent = 'Saving...';
+      $('updGo').textContent = 'Saving...'; $('updGo').onclick = null; try { sessionStorage.setItem('hxUpd', String(j.build)); } catch (e) {}
       saveNow().then(() => setTimeout(() => location.replace(location.pathname + '?v=' + j.build), 300));
     };
   }
@@ -1485,7 +1488,7 @@
     }
   }
   function enemyTurn() {
-    if (!B || B.turn !== 'enemy') return;
+    if (!B || B.turn !== 'enemy' || updBlock) return;
     const m = B.m;
     if (B.frozen > 0) { B.frozen--; blog(m.name + ' cannot move!'); fx('Z', 'm', '#a0e8ff'); }
     else if (m.boss) bossTurn(m);
@@ -1677,6 +1680,7 @@
   }
 
   function update(dt) {
+    if (updBlock) return;
     if (S.state === 'play' && !B && !stashOpen && !craftOpen && !skillsOpen && !hallOpen) {
       if (!guy.mv) chooseMove();
       if (guy.mv) {
@@ -2679,7 +2683,7 @@
     if (pAcc > 1) { pShow = Math.round(pN / pAcc) + ' fps  worst ' + Math.round(pWorst * 1000) + 'ms  save ' + Math.round(saveMs) + 'ms\ntiles ' + tiles.size + '  monsters ' + mons.size; perfEl.textContent = pShow; pAcc = 0; pN = 0; pWorst = 0; }
   }
   function frame() {
-    const now = performance.now() / 1000, dt = Math.min(.05, now - last); last = now; gt += dt;
+    const now = performance.now() / 1000, dt = Math.min(.05, now - last); last = now; if (!updBlock) gt += dt;
     update(dt);
     const ct = curTile();
     cam.x += (guy.x - cam.x) * .08; cam.y += (guy.y - 10 - elev(ct) - cam.y) * .08;
@@ -3333,6 +3337,7 @@
   const zb = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', (e) => { e.stopPropagation(); fn(); }); };
   if (!TEST) { zb('zIn', () => zoomBy(1)); zb('zOut', () => zoomBy(-1)); zb('zCtr', zoomReset); }
   window.addEventListener('keydown', (e) => {
+    if (updBlock) return;
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.key === '+' || e.key === '=') { zoomBy(1); return; } if (e.key === '-' || e.key === '_') { zoomBy(-1); return; } if (e.key === '0') { zoomReset(); return; }
     if (/^[1-6]$/.test(e.key)) { const known = activeSpells(); const k = known[+e.key - 1]; if (k) selectSpell(k); return; }
@@ -3354,7 +3359,7 @@
     ac.addEventListener('pointerup', clr); ac.addEventListener('pointercancel', clr); ac.addEventListener('pointermove', clr);
     ac.addEventListener('click', (e) => { if (ac.dataset.lp) { ac.dataset.lp = ''; e.stopImmediatePropagation(); e.preventDefault(); } }, true); }
   window.addEventListener('pagehide', () => saveNow());
-  if (!TEST) document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+  if (!TEST) document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); else checkUpdate(); });
   function resize() {
     scale = curScale(); dpr = TEST ? 1 : Math.min(window.innerWidth * window.innerHeight > 600000 ? 2 : 2.5, window.devicePixelRatio || 1);
     W = Math.ceil(window.innerWidth / scale); H = Math.ceil(window.innerHeight / scale);
