@@ -534,7 +534,9 @@
     return { v: 9, at: Date.now(), gt, P, S, stats, tiles, mons, pet, guy: { q: guy.q, r: guy.r, face: guy.face },
       battle: B && (B.result === null || B.result === 'dead') ? { q: B.m.q, r: B.m.r, dying: B.result === 'dead' } : null };
   }
-  function saveNow() { if (!canSave() || !S || S.state !== 'play') return Promise.resolve(); saveWant = false; saveT = 0; try { return idbDo('readwrite', st => st.put(snapshot(), 'run')).catch(() => {}); } catch (e) { return Promise.resolve(); } }
+  let saveMs = 0, saveSig = '';
+  const stateSig = () => guy.q + ',' + guy.r + ',' + S.revealed + ',' + S.gems + ',' + mons.size + ',' + (S.stash || []).length + ',' + JSON.stringify(P);
+  function saveNow() { if (!canSave() || !S || S.state !== 'play') return Promise.resolve(); saveWant = false; saveT = 0; try { const t0 = performance.now(), snap = snapshot(); saveSig = stateSig(); return idbDo('readwrite', st => st.put(snap, 'run')).then(() => { saveMs = performance.now() - t0; }).catch(() => {}); } catch (e) { return Promise.resolve(); } }
   function saveSoon() { saveWant = true; }
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
@@ -581,7 +583,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 30;
+  const BUILD = 31;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -2646,7 +2648,14 @@
     G.restore(); glows = [];
   }
 
-  let last = performance.now() / 1000;
+  let last = performance.now() / 1000, hudLast = 0;
+  // add ?perf to the address to see frame rate, slowest recent frame, autosave time and world size
+  const PERF = !TEST && /[?&]perf\b/.test(location.search); let perfEl = null, pAcc = 0, pN = 0, pWorst = 0, pShow = '';
+  function perfTick(dt) {
+    if (!perfEl) { perfEl = document.createElement('div'); perfEl.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99;background:rgba(0,0,0,.7);color:#9fe;font:12px monospace;padding:3px 6px;pointer-events:none;white-space:pre'; document.body.appendChild(perfEl); }
+    pAcc += dt; pN++; if (dt > pWorst) pWorst = dt;
+    if (pAcc > 1) { pShow = Math.round(pN / pAcc) + ' fps  worst ' + Math.round(pWorst * 1000) + 'ms  save ' + Math.round(saveMs) + 'ms\ntiles ' + tiles.size + '  monsters ' + mons.size; perfEl.textContent = pShow; pAcc = 0; pN = 0; pWorst = 0; }
+  }
   function frame() {
     const now = performance.now() / 1000, dt = Math.min(.05, now - last); last = now; gt += dt;
     update(dt);
@@ -2689,7 +2698,7 @@
 
     const list = [];
     for (const t of tiles.values()) { const w = toWorld(t.q, t.r), sx = w.x + ox, sy = w.y + oy; if (sx < -50 || sx > W + 50 || sy < -60 || sy > H + 70) continue; list.push({ t, w, y: w.y }); }
-    for (const m of mons.values()) list.push({ m, y: m.y + .3 });
+    for (const m of mons.values()) { const sx = m.x + ox, sy = m.y + oy; if (sx < -60 || sx > W + 60 || sy < -80 || sy > H + 80) continue; list.push({ m, y: m.y + .3 }); }
     list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 });
     if (S.state === 'play' && !guy.mv && !caveFull()) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); }
     if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
@@ -2749,10 +2758,11 @@
     if (S.boss && !S.cave) { const w = toWorld(S.boss.lair.q, S.boss.lair.r); marker(w.x, w.y, ox, oy, '#ff4a3a'); }
     if (!S.cave) for (const t of tiles.values()) if (t.grave) { const w = toWorld(t.q, t.r); marker(w.x, w.y, ox, oy, '#ffffff'); }
     if (flash > 0) { ctx.fillStyle = 'rgba(255,255,255,' + flash.toFixed(2) + ')'; ctx.fillRect(0, 0, W, H); }
-    if (hudDirty) renderHud();
-    saveT += dt; if ((saveWant && saveT > 1.5) || saveT > 6) saveNow();
+    if (hudDirty && now - hudLast > .06) { hudLast = now; renderHud(); }
+    saveT += dt; if (!B && ((saveWant && saveT > 1.5) || saveT > 10)) { if (saveWant || stateSig() !== saveSig) saveNow(); else saveT = 0; }
     updT += dt; if (updT > 150) { updT = 0; checkUpdate(); }
-    if ((miniT += dt) > .2) { miniT = 0; drawMini(); }
+    if ((miniT += dt) > .4) { miniT = 0; drawMini(); }
+    if (PERF) perfTick(dt);
     if (B) drawBattle();
     requestAnimationFrame(frame);
   }

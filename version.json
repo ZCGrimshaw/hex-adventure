@@ -1,1 +1,1 @@
-{ "build": 30, "notes": "Hidden springs now stay on the map: you are asked whether to drink, and can come back later to heal." }
+{ "build": 31, "notes": "Smoother play on long runs: smarter autosaving and less redrawing. Add ?perf to the address to see a frame-rate readout." }
