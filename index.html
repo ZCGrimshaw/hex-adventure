@@ -189,6 +189,7 @@
 <div id="awaken" class="modal"></div>
 <div id="gmenu" class="modal"><div class="bx" id="menuBox" style="width:min(760px,96vw)"></div></div>
 <div id="spellbook" class="modal"><div class="bx" id="bookBox" style="width:min(560px,95vw)"></div></div>
+<div id="bookAsk" class="modal"><div class="bx" id="bookAskBox" style="width:min(460px,94vw);text-align:center;border-color:#c8a8ff"></div></div>
 <div id="springAsk" class="modal"><div class="bx" id="springBox" style="width:min(420px,94vw);text-align:center;border-color:#5ad0ff"></div></div>
 <div id="shop" class="modal"><div class="bx" id="shopBox" style="width:min(940px,96vw);border-color:#ffd23a"></div></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
@@ -541,7 +542,8 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
     d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
@@ -563,6 +565,7 @@
     if (d.battle) { const m = mons.get(key(d.battle.q, d.battle.r));
       if (m && d.battle.dying) { later(() => die(m), 300); return; }
       if (m) later(() => { toast('The fight continues!'); startBattle(m); }, 700); }
+    if (P.bookDue && !P.book) later(() => askBook(null), 900);
     toast('Welcome back! Your run has been restored (' + S.revealed + ' tiles, ' + S.deaths + ' skull' + (S.deaths === 1 ? '' : 's') + ').');
   }
   function loadSaved() {
@@ -583,7 +586,7 @@
     rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 31;
+  const BUILD = 32;
   let updT = 0, updShown = false;
   function checkUpdate() {
     if (TEST || updShown || location.protocol === 'file:') return;
@@ -618,7 +621,7 @@
   const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
   function newGame(noOnline) {
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
-    P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, seen: {}, known: {},
+    P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
     S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
@@ -742,7 +745,6 @@
         ...(rnd() < .4 ? [{ it: { kind: 'item', id: 'pack' }, price: 70 + Math.floor(d / 2) }] : []),
         (() => { const g = makeGear(d, 1); return { it: g, price: 25 + g.tier * 18 }; })(),
         ...(rnd() < .55 ? [{ special: 'tome', price: 90 + Math.floor(d * 1.2) }] : []),
-        ...(rnd() < .5 ? [{ special: 'scroll', price: 55 + Math.floor(d / 2) }] : []),
         ...(rnd() < .35 ? [{ it: { kind: 'item', id: 'bridge' }, price: 20 + Math.floor(d / 8) }] : []),
         ...(d >= 30 && rnd() < .16 ? [{ special: 'respec', price: 240 + Math.floor(d * 2) }] : [])]; break;
       default: t.type = type;
@@ -939,11 +941,31 @@
     if (got.length) toast('Got: ' + got.slice(0, 4).join(', ') + (got.length > 4 ? ' and more' : ''));
     hudDirty = true;
   }
-  function learnSpell() {
-    const d = S.revealed, avail = Object.keys(SPELLS).filter(k => SPELLS[k].d <= d && !P.spells[k]);
-    if (avail.length) { const k = avail[0] === 'fire' ? 'fire' : pick(avail); P.spells[k] = 1; fillLoadout(); toast('You learned ' + SPELLS[k].name + '! (' + SPELLS[k].desc + ')' + (P.loadout.indexOf(k) < 0 ? ' Your spell slots are full: swap spells at a shrine.' : '')); }
-    else { const k = pick(Object.keys(P.spells)); P.spells[k]++; toast(SPELLS[k].name + ' grows stronger (Lv ' + P.spells[k] + ')'); }
-    hudDirty = true;
+  // the first rune you ever meet gives a spell book and a free first spell; every rune after that gives a spell point
+  // spell points are spent on new spells and stronger spells at a shop
+  const SPCOST = { fire: 1, heal: 1, frost: 1, drain: 2, bolt: 3 };
+  const spellBuyCost = (k) => P.spells[k] ? P.spells[k] : SPCOST[k];
+  function learnSpell(tile) {
+    if (!P.book) { askBook(tile); return; }
+    if (tile) tile.type = 'grass';
+    P.spts = (P.spts || 0) + 1; hudDirty = true;
+    toast('Rune magic! +1 spell point (spend it on spells at a shop)');
+  }
+  function askBook(tile) {
+    P.bookDue = true;
+    if (TEST) { P.book = true; P.bookDue = false; P.spells.fire = 1; fillLoadout(); if (tile) tile.type = 'grass'; return; }
+    guy.target = null; guy.pending = null; springOpen = true;
+    const opt = (k, why) => '<div class="rec" style="align-items:center">' + img(ICONURL['sp_' + k]) + '<span class="grow" style="text-align:left"><b>' + SPELLS[k].name + '</b> &middot; ' + SPELLS[k].cost + ' MP<br><span style="opacity:.8;font-size:12px">' + why + '</span></span><button class="act" data-pick="' + k + '">Choose</button></div>';
+    $('bookAskBox').innerHTML = '<h2 style="color:#c8a8ff">A SPELL BOOK!</h2><div style="font-size:42px;margin:4px 0">&#128214;</div>' +
+      '<div class="note" style="margin:6px 0 10px">The rune stone glows and a worn spell book falls open in your hands. Choose the first spell it teaches you. More runes will give you spell points to learn the rest at a shop.</div>' +
+      opt('fire', SPELLS.fire.desc + '. ' + SPHELP.fire) + opt('frost', SPELLS.frost.desc + '. ' + SPHELP.frost) + opt('heal', SPELLS.heal.desc + '. ' + SPHELP.heal);
+    $('bookAsk').style.display = 'flex';
+    $('bookAskBox').onclick = (e) => {
+      const b = e.target.closest('[data-pick]'); if (!b) return; const k = b.dataset.pick;
+      P.spells[k] = 1; P.book = true; P.bookDue = false; fillLoadout(); if (tile) tile.type = 'grass';
+      $('bookAsk').style.display = 'none'; springOpen = false; hudDirty = true; saveSoon();
+      toast('You learned ' + SPELLS[k].name + '! Later runes give spell points to buy more spells at a shop');
+    };
   }
   // chests only give up the old key as a fallback, once a vault has waited a long while
   function maybeKey(t) { if (S.keyDue && S.revealed - (S.vaultAt || 0) >= 70 && rnd() < .6) { S.keyDue = false; t.loot.push({ kind: 'item', id: 'key' }); } }
@@ -1013,7 +1035,7 @@
     if (t.type === 'spring') { if (springHurt()) askSpring(t); else toast(t.dry && gt < t.dry ? 'The spring is still trickling back. Give it a moment' : 'A healing spring. Come back when you are hurt'); }
     if (t.type === 'bones') { t.type = 'bonesdone'; const g = ri(3, 9) + Math.floor(curD() / 8); P.gold += gm(g); stats.gold += g; t.loot.push(randItem(curD())); if (rnd() < .3) t.loot.push(makeGear(curD())); toast('You search the remains of a lost explorer (+' + g + ' gold)'); }
     if (t.type === 'lair' && S.boss && !S.boss.open) toast(S.boss.m.name + ' slumbers behind the seal. ' + gateText());
-    if (t.type === 'rune') { t.type = 'grass'; learnSpell(); }
+    if (t.type === 'rune') learnSpell(t);
     if (t.type === 'chest') {
       if (!t.safe && d > 25 && rnd() < 0.1) { t.type = 'grass'; toast('The chest has teeth! A Mimic!'); ambush(t, makeMonster(d, { base: MIMIC, elite: true })); return; }
       openChest(t);
@@ -2630,7 +2652,7 @@
   const view = () => ({ ox: W / 2 - (cam.x + pan.x), oy: H / 2 - (cam.y + pan.y) });
   const cellAtMouse = () => { const { ox, oy } = view(); return fromWorld(mouse.x - ox, mouse.y - oy); };
   const TIPS = { grass: 'Grass', tree: 'Tree: chop for wood', bush: 'Berry bush', river: 'River: water and fish', stone: 'Stone', chest: 'Treasure chest!', opened: 'Opened chest',
-    spring: 'Healing spring: drink to restore health and magic', rune: 'Rune stone: magic', mystery: '??? Step on it to find out', merchant: 'Shop: spend your gold', shrine: 'Shrine: checkpoint + your stash (monsters cannot attack you here)', trap: 'Grass',
+    spring: 'Healing spring: drink to restore health and magic', rune: 'Rune stone: your first is a spell book, the rest give spell points', mystery: '??? Step on it to find out', merchant: 'Shop: spend your gold', shrine: 'Shrine: checkpoint + your stash (monsters cannot attack you here)', trap: 'Grass',
     wall: 'Rock wall: a bomb could open it', bear: 'Hungry bear: do not fight it. Give it a fish', bearfriend: 'A happy, full bear. Feed it again and it might join you',
     chasm: 'Chasm: bridge it with 2 wood', bridge: 'Bridge', burning: 'Fire! Someone is trapped. Douse it with water', blaze: 'Wildfire: douse with water',
     ice: 'Ice block: melt with Fireball or a campfire (wood)', vault: 'Locked vault: needs an old key', vines: 'Vines: cut for rope making', ore: 'Iron ore vein', flint: 'Flint outcrop',
@@ -2911,7 +2933,7 @@
     $('gear').innerHTML = g + '</div><div id="gearInfo">' + gearInfoHTML() + '</div></div>';
     tidyLoadout();
     const known = activeSpells();
-    $('bookSub').textContent = known.length + ' / ' + spellSlots() + ' slots';
+    $('bookSub').textContent = known.length + ' / ' + spellSlots() + ' slots' + (P.spts ? ' \u00b7 ' + P.spts + ' pts' : '');
     $('spells').innerHTML = known.length ? known.map((k, i) => '<button class="spell' + (P.mp < SPELLS[k].cost ? ' off' : '') + (aim === k ? ' on' : '') + '" data-k="' + k + '" title="' + SPELLS[k].name + ' Lv ' + P.spells[k] + ' (' + SPELLS[k].cost + ' MP, key ' + (i + 1) + '): ' + SPHELP[k] + '"><u>' + (i + 1) + '</u>' + img(ICONURL['sp_' + k]) + '<i>' + SPELLS[k].cost + '</i></button>').join('') : '<div class="nosp">No spells yet.<br>Find rune stones</div>';
     let b = '', used = 0;
     P.bag.forEach((e, i) => { used += esize(e); b += slotHTML(e, 'data-i="' + i + '"').replace('class="slot', 'class="slot' + (bagSel === i ? ' sel' : '')); });
@@ -3016,10 +3038,10 @@
     return hd('The goal') + li(['Explore a floating world, one hex at a time. Every tile you reveal is new, and the further you go the tougher it gets.', 'Your score is <b>space gems</b> (found in caves and dropped by guardians and bosses). The Hall of Greats ranks runs by tiles, then level, then gold.', 'You have <b>5 skulls</b>. Each death costs one and sends you back to your last shrine. The fifth ends the run.']) +
       hd('Controls') + li(['<b>Click a glowing outline</b> to reveal a tile. <b>Click a tile</b> to walk there. On a phone, tap once to select, tap again to go.', 'Drag to look around. Pinch, mouse wheel or + / - to zoom. 0 resets.', '<b>Right-click</b> (or long-press) gear on the ground, or an Equip button, to compare it with what you wear. Use the arrows to flip through several items.', 'Keys: <b>C</b> crafting, <b>K</b> skills, <b>1-6</b> spells, <b>Esc</b> cancels or closes.']) +
       hd('Shrines') + li(['Shrines are checkpoints. Monsters cannot attack you on one. Rest to heal fully, open your stash (it is safe when you die), and swap your carried spells in the Spellbook.', 'They appear more often when you are hurt or your bag is full, and always after a long stretch.']) +
-      hd('Growing stronger') + li(['You gain a skill point every level and 2 from each boss. Higher ranks of a skill cost more points. Master every skill for an <b>Awakening</b>: your bonuses lock in, the tree resets, and levels need 1.5x more XP.', 'You can learn many spells but carry only 3 (up to 6 with Arcane Focus).', 'Gear drops from chests, monsters and shops. Compare before you equip, and reinforce armor with iron.']) +
+      hd('Growing stronger') + li(['You gain a skill point every level and 2 from each boss. Higher ranks of a skill cost more points. Master every skill for an <b>Awakening</b>: your bonuses lock in, the tree resets, and levels need 1.5x more XP.', 'The first rune stone you find is a spell book: pick Fireball, Frost or Heal. Every rune after that gives a spell point, which you spend at a shop to learn new spells or make known ones stronger. You carry only 3 spells (up to 6 with Arcane Focus).', 'Gear drops from chests, monsters and shops. Compare before you equip, and reinforce armor with iron.']) +
       hd('Crafting') + li(['Press C. Rope, torch, bridge, bomb and health potion are always open. Pickaxe, ladder, raft, crystal key, pack upgrade and magic potion unlock with the <b>Artisan</b> and <b>Alchemy</b> skills.', 'At a shrine, crafting also uses materials from your stash.']) +
       hd('Space gems') + li(['Gems come from caves and from slain guardians and bosses.', '<b>Spend:</b> one gem pays for a full rest at a shrine (your first 3 rests are free; with no gem you only recover half).', '<b>Score:</b> every gem you find counts toward your Hall of Greats score. Spending a gem never lowers it.']) +
-      hd('Shops and keys') + li(['A shop appears every so often. Open it to buy and sell in its own window: potions, gear, spell scrolls, tomes (+1 skill point), and rarely a Draught of Rebirth that resets your skills.', 'A locked vault needs an <b>old key</b>, which powerful monsters drop: elites, cave guardians, bosses, trolls, golems, demons and dragons.']) +
+      hd('Shops and keys') + li(['A shop appears every so often. Open it to buy and sell in its own window: potions, gear, tomes (+1 skill point), and a spell trainer that takes spell points, and rarely a Draught of Rebirth that resets your skills.', 'A locked vault needs an <b>old key</b>, which powerful monsters drop: elites, cave guardians, bosses, trolls, golems, demons and dragons.']) +
       hd('Bosses and caves') + li(['Every so often a lair appears and a mist blocks the way until you open it (wardens, braziers or an offering) and defeat the boss.', 'Caves are dark: light a torch to go in. They hold gem veins and a guardian. Climb the rope to leave.']) +
       hd('Things you will meet') + '<table style="width:100%;font-size:13px;border-collapse:collapse">' + Object.keys(HINT).map(k => '<tr><td style="padding:2px 6px 2px 0;color:#9fe8ff;white-space:nowrap;vertical-align:top;text-transform:capitalize">' + k + '</td><td style="padding:2px 0;border-bottom:1px solid #22332a">' + HINT[k] + '</td></tr>').join('') + '</table>' +
       hd('Items') + '<table style="width:100%;font-size:13px;border-collapse:collapse">' + Object.keys(ITEMS).map(k => '<tr><td style="padding:2px 6px 2px 0;white-space:nowrap;vertical-align:top"><b>' + ITEMS[k].name + '</b></td><td style="padding:2px 0;border-bottom:1px solid #22332a">' + ITEMS[k].d + '</td></tr>').join('') + '</table>';
@@ -3072,13 +3094,20 @@
       buy += row(ico, name, desc, '<button class="act buy' + (off ? ' off' : '') + '" data-by="' + i + '">' + (shopArm === i ? 'Tap again<small>to confirm</small>' : s.price + ' gold<small>' + (off || 'buy') + '</small>') + '</button>');
     });
     if (!t.stock.length) buy = '<div class="note">Sold out. Come back for the next shop on your travels.</div>';
+    let spH = '<div class="sec"><span>SPELL TRAINER</span><span>' + (P.spts || 0) + ' spell point' + ((P.spts || 0) === 1 ? '' : 's') + '</span></div>';
+    if (!P.book) spH += '<div class="note">Find a rune stone to get your spell book first. Every rune after that gives a spell point.</div>';
+    else for (const k of SP_ORDER) {
+      const known = !!P.spells[k], c = spellBuyCost(k), locked = !known && SPELLS[k].d > S.revealed, off = locked ? 'Unlocks at tile ' + SPELLS[k].d : P.spts < c && 'Need ' + c + ' point' + (c > 1 ? 's' : '');
+      spH += row(im(ICONURL['sp_' + k]), SPELLS[k].name + (known ? ' <span style="opacity:.7">Lv ' + P.spells[k] + '</span>' : ''), (known ? 'Strengthen: +20% power. ' : 'Learn it. ') + SPHELP[k],
+        '<button class="act buy' + (off ? ' off' : '') + '" data-sp="' + k + '">' + (known ? 'Strengthen' : 'Learn') + '<small>' + (off || c + ' point' + (c > 1 ? 's' : '')) + '</small></button>');
+    }
     P.bag.forEach((e, i) => {
       const g = typeof e !== 'string', p = sellPrice(e);
       sell += row(g ? im(gearIconURL(e)) : im(ICONURL[e]), g ? '<span data-sbi="' + i + '" style="cursor:pointer;text-decoration:underline dotted;color:' + e.col + '">' + e.name + '</span>' : ITEMS[e].name, g ? gearDesc(e) : ITEMS[e].d, '<button class="act alt" data-sl="' + i + '">Sell<small>' + p + ' gold</small></button>');
     });
     if (!P.bag.length) sell = '<div class="note">Your bag is empty. Gear and items in your bag can be sold here.</div>';
     $('shopBox').innerHTML = '<h2 style="color:#ffd23a;letter-spacing:3px">TRAVELLING SHOP</h2><div style="display:flex;justify-content:center;gap:18px;margin-bottom:8px;font-size:15px"><span>Gold <b style="color:#ffd23a">' + P.gold + '</b></span><span>Bag <b>' + bagUsed() + ' / ' + P.bagCap + '</b></span><span>Skill points <b>' + P.sp + '</b></span></div>' +
-      '<div style="display:flex;gap:14px;flex-wrap:wrap;text-align:left"><div style="flex:1 1 340px"><div class="sec"><span>FOR SALE</span><span>' + t.stock.length + '</span></div>' + buy + '</div><div style="flex:1 1 300px"><div class="sec"><span>SELL FROM YOUR BAG</span><span>' + P.bag.length + '</span></div>' + sell + '</div></div>' +
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;text-align:left"><div style="flex:1 1 340px"><div class="sec"><span>FOR SALE</span><span>' + t.stock.length + '</span></div>' + buy + spH + '</div><div style="flex:1 1 300px"><div class="sec"><span>SELL FROM YOUR BAG</span><span>' + P.bag.length + '</span></div>' + sell + '</div></div>' +
       '<div style="text-align:center;margin-top:10px"><button class="act" id="shClose">Leave shop</button></div>';
   }
   if (!TEST) $('shopBox').onclick = (e) => {
@@ -3086,6 +3115,9 @@
     const sg = tg.closest('[data-sg]'); if (sg) { const g = t.stock[+sg.dataset.sg].it; return inspectGear(g, t.stock.filter(x => x.it && x.it.kind === 'gear').map(x => x.it)); }
     const sb = tg.closest('[data-sbi]'); if (sb) { const g = P.bag[+sb.dataset.sbi]; return inspectGear(g, P.bag.filter(x => typeof x !== 'string')); }
     const sl = tg.closest('[data-sl]'); if (sl) { const i = +sl.dataset.sl, e2 = P.bag[i]; if (e2 === undefined) return; const p = sellPrice(e2); P.gold += p; P.bag.splice(i, 1); toast('Sold ' + (typeof e2 === 'string' ? ITEMS[e2].name : e2.name) + ' for ' + p + ' gold'); hudDirty = true; return renderShop(); }
+    const sp = tg.closest('[data-sp]'); if (sp) { const k = sp.dataset.sp, c = spellBuyCost(k); if (sp.classList.contains('off') || P.spts < c) return;
+      P.spts -= c; if (P.spells[k]) { P.spells[k]++; toast(SPELLS[k].name + ' grows stronger (Lv ' + P.spells[k] + ')'); } else { P.spells[k] = 1; fillLoadout(); toast('You learned ' + SPELLS[k].name + '!' + (P.loadout.indexOf(k) < 0 ? ' Your spell slots are full: swap spells at a shrine' : '')); }
+      hudDirty = true; return renderShop(); }
     const by = tg.closest('[data-by]'); if (!by || by.classList.contains('off')) return;
     const i = +by.dataset.by, s = t.stock[i]; if (!s || P.gold < s.price) return;
     if (s.special === 'respec' && shopArm !== i) { shopArm = i; return renderShop(); }
@@ -3105,11 +3137,11 @@
     if (TEST || !bookOpen) return;
     tidyLoadout();
     const can = atShrine(), n = spellSlots(), known = SP_ORDER.filter(k => P.spells[k]);
-    let h = '<h2>SPELLBOOK</h2><div class="note" style="margin:0 0 8px">' + (can ? 'You are at a shrine: choose which spells to carry.' : 'You can swap spells at any shrine.') + ' Slots: <span class="sppill">' + n + ' / 6</span>' + (n < 6 ? ' (Arcane Focus skill adds more)' : '') + '</div><div class="rowf" style="justify-content:center">';
+    let h = '<h2>SPELLBOOK</h2><div class="note" style="margin:0 0 8px">Spell points: <span class="sppill">' + (P.spts || 0) + '</span> (spend them at a shop) &middot; ' + (can ? 'You are at a shrine: choose which spells to carry.' : 'You can swap spells at any shrine.') + ' Slots: <span class="sppill">' + n + ' / 6</span>' + (n < 6 ? ' (Arcane Focus skill adds more)' : '') + '</div><div class="rowf" style="justify-content:center">';
     for (let i = 0; i < 6; i++) { const k = P.loadout[i];
       h += i >= n ? '<div class="slot empty" title="Locked: learn Arcane Focus"><span class="n" style="opacity:.5">&#128274;</span></div>' : k ? '<div class="slot" data-bu="' + k + '" title="' + SPELLS[k].name + (can ? ' (click to put away)' : '') + '">' + img(ICONURL['sp_' + k]) + '<span class="n">' + SPELLS[k].name + '</span></div>' : '<div class="slot empty"><span class="n" style="opacity:.5">free</span></div>'; }
     h += '</div><div class="sec"><span>SPELLS YOU KNOW</span><span>' + known.length + '</span></div>';
-    if (!known.length) h += '<div class="note">No spells yet. Find rune stones.</div>';
+    if (!known.length) h += '<div class="note">No spells yet. Find a rune stone.</div>';
     for (const k of known) { const on = P.loadout.indexOf(k) >= 0, full = !on && P.loadout.length >= n;
       h += '<div class="rec">' + img(ICONURL['sp_' + k]) + '<span class="grow"><b>' + SPELLS[k].name + '</b> Lv ' + P.spells[k] + ' &middot; ' + SPELLS[k].cost + ' MP<br>' + SPHELP[k] + '</span>' +
         '<button class="act' + ((!can || full) && !on ? ' off' : '') + (can ? '' : ' off') + '" data-bk="' + k + '">' + (on ? 'Put away' : 'Carry') + '<small>' + (!can ? 'shrine only' : full ? 'slots full' : on ? 'equipped' : 'free slot') + '</small></button></div>'; }
