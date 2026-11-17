@@ -147,6 +147,7 @@
   #lvlBanner div { font-size:18px; color:#fff2c8; margin-top:2px; }
   #lvlBanner.go { animation:lvlpop 3.2s ease-out forwards; }
   @keyframes lvlpop { 0% { opacity:0; transform:scale(.6); } 8% { opacity:1; transform:scale(1.12); } 14% { transform:scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateY(-12px); } }
+  #htip { position:fixed; z-index:99; pointer-events:none; display:none; max-width:320px; background:#0a120def; border:1px solid #7dff8f; border-radius:6px; padding:7px 11px; font-size:13px; line-height:1.4; color:#e8f6ec; box-shadow:0 4px 14px #000a; }
   #toast { font-size:18px; } #tip { font-size:14px; }
   .act { font-size:14px; }
   @media (max-width:760px) {
@@ -178,6 +179,7 @@
 <div id="side" class="ui"><div id="gear" class="panel"></div><div id="mapbox" class="panel"><canvas id="mini" width="232" height="150"></canvas></div></div>
 <div id="zoomBtns" class="ui"><button id="zIn" aria-label="Zoom in">+</button><button id="zCtr" aria-label="Reset view">&#9678;</button><button id="zOut" aria-label="Zoom out">&minus;</button></div>
 <div id="tip" class="ui"><span id="tipText"></span></div>
+<div id="htip"></div>
 <div id="lvlBanner" class="ui"><span class="lb"><h1>LEVEL UP!</h1><div id="lvlSub"></div></span></div>
 <div id="toast" class="ui"><span id="toastText"></span></div>
 <div id="bottom" class="ui">
@@ -598,7 +600,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 41;
+  const BUILD = 42;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2940,7 +2942,8 @@
   // right-click gear lying on a tile: big picture plus a comparison with what you wear
   const STATS = [['atk','Attack'],['def','Defense'],['hp','HP'],['mp','MP'],['crit','Crit %'],['flee','Flee %']];
   let inspList = [], inspIdx = 0;
-  function inspectGear(g, list) {
+  function inspectGear(g, list, src) {
+    inspSrc = src || '';
     inspList = list && list.length ? list : [g]; inspIdx = Math.max(0, inspList.indexOf(g));
     const ct = curTile(), inTile = ct && ct.loot.indexOf(g) >= 0, inBag = P.bag.indexOf(g) >= 0, canEq = (inTile || inBag) && !B && S.state === 'play' && !guy.mv;
     const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
@@ -2953,13 +2956,13 @@
       const d = a - b, col = d > 0 ? '#7dff8f' : d < 0 ? '#ff7a6a' : '#9ab';
       rows += '<tr><td style="text-align:left">' + lab + '</td><td>' + (old ? b : '-') + '</td><td><b>' + a + '</b></td><td style="color:' + col + ';font-weight:700">' + (d > 0 ? '+' : '') + d + '</td></tr>';
     }
-    $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + card(g, 'ON THE GROUND') + '</div>' +
+    $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + card(g, inspSrc === 'shop' ? 'IN THE SHOP' : inspSrc === 'bag' ? 'IN YOUR BAG' : 'ON THE GROUND') + '</div>' +
       '<table style="width:100%;margin-top:8px;font-size:14px;text-align:center"><tr class="dim"><th style="text-align:left"></th><th>Now</th><th>This</th><th>Change</th></tr>' + rows + '</table>' +
       (canEq ? '<button class="act hot" data-ieq="1" style="margin-top:10px;font-size:16px">Equip ' + g.name + (gpower(g) > gpower(old) ? ' &#9650;' : '') + '</button>' : '') + '<div class="dim" style="margin-top:8px;font-size:12px">' + (inspList.length > 1 ? 'Use the arrows or Left / Right keys to flip through items. ' : '') + 'Click outside or press Esc to close</div>';
     $('inspect').style.display = 'flex'; inspectOpen = true;
   }
-  let inspectOpen = false;
-  function inspectCycle(d) { if (inspList.length < 2) return; inspIdx = (inspIdx + d + inspList.length) % inspList.length; inspectGear(inspList[inspIdx], inspList); }
+  let inspectOpen = false, inspSrc = '';
+  function inspectCycle(d) { if (inspList.length < 2) return; inspIdx = (inspIdx + d + inspList.length) % inspList.length; inspectGear(inspList[inspIdx], inspList, inspSrc); }
   function closeInspect() { inspectOpen = false; $('inspect').style.display = 'none'; }
   function gearInfoHTML() {
     const sl = gearHover; if (!sl) return '<span class="dim">Hover a slot for details</span>';
@@ -3384,6 +3387,27 @@
     if (t.closest('#exDl')) { download(nm + '-summary.json', exportText()); return toast('Summary downloaded'); }
     if (t.closest('#exFull')) { download(nm + '-save.json', exportFull()); return toast('Full save downloaded'); }
   };
+  // ---------- hover descriptions: rest the pointer on an item, good or slot for 3 seconds ----------
+  if (!TEST) {
+    const tip = $('htip'); let mx = -1, my = -1, ax = -1, ay = -1, key0 = '', since = 0, shown = false;
+    const hideTip = () => { if (shown) { tip.style.display = 'none'; shown = false; } };
+    window.addEventListener('mousemove', (e) => { mx = e.clientX; my = e.clientY; if (shown && Math.hypot(mx - ax, my - ay) > 8) hideTip(); }, true);
+    window.addEventListener('mousedown', hideTip, true); window.addEventListener('wheel', hideTip, true); window.addEventListener('keydown', hideTip, true);
+    setInterval(() => {
+      if (mx < 0) return; const el0 = document.elementFromPoint(mx, my), el = el0 && el0.closest ? el0.closest('[title],[data-tip]') : null;
+      if (el && el.hasAttribute('title')) { el.dataset.tip = el.getAttribute('title'); el.removeAttribute('title'); }   // swallow the browser's own tooltip
+      const txt = el ? el.dataset.tip || '' : '';
+      if (!txt) { key0 = ''; hideTip(); return; }
+      if (txt !== key0) { key0 = txt; since = performance.now(); ax = mx; ay = my; hideTip(); return; }
+      if (Math.hypot(mx - ax, my - ay) > 8) { ax = mx; ay = my; since = performance.now(); hideTip(); return; }
+      if (!shown && performance.now() - since >= 3000) {
+        const uz = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--uz')) || 1;
+        tip.style.zoom = uz; tip.textContent = txt; tip.style.display = 'block'; shown = true;
+        const w = tip.offsetWidth * uz, h = tip.offsetHeight * uz; let x = mx + 16, y = my + 18; if (x + w > innerWidth - 6) x = mx - w - 12; if (y + h > innerHeight - 6) y = my - h - 12;
+        tip.style.left = Math.max(4, x) / uz + 'px'; tip.style.top = Math.max(4, y) / uz + 'px';
+      }
+    }, 150);
+  }
   // ---------- shop window ----------
   let shopOpen = false, shopArm = null;
   const SELLV = { berries: 2, meat: 3, fish: 4, cooked: 6, water: 2, wood: 2, stone: 2, vine: 2, flint: 3, iron: 6, crystal: 14, hide: 8, hpot: 18, mpot: 18, bomb: 14, torch: 7, rope: 6, pickaxe: 24, ladder: 12, raft: 18, ckey: 40, pack: 40, bridge: 10, key: 60 };
@@ -3393,7 +3417,7 @@
   function closeShop() { shopOpen = false; $('shop').style.display = 'none'; hudDirty = true; }
   function renderShop() {
     if (TEST || !shopOpen) return; const t = shopTile(); if (!t) return closeShop();
-    const row = (ico, name, desc, btn) => '<div class="rec" style="align-items:center">' + ico + '<span class="grow"><b>' + name + '</b><br><span style="opacity:.8;font-size:12px">' + desc + '</span></span>' + btn + '</div>';
+    const strip = (x) => String(x).replace(/<[^>]+>/g, '').replace(/&#?\w+;/g, ' ').replace(/"/g, "'"), row = (ico, name, desc, btn) => '<div class="rec" title="' + strip(name) + ': ' + strip(desc) + '" style="align-items:center">' + ico + '<span class="grow"><b>' + name + '</b><br><span style="opacity:.8;font-size:12px">' + desc + '</span></span>' + btn + '</div>';
     const im = (u) => '<img src="' + u + '" style="width:40px;height:40px;image-rendering:pixelated">', em = (c) => '<span style="font-size:30px;width:40px;text-align:center">' + c + '</span>';
     let buy = '', sell = '';
     t.stock.forEach((s, i) => {
@@ -3426,8 +3450,8 @@
   }
   if (!TEST) $('shopBox').onclick = (e) => {
     const t = shopTile(), tg = e.target; if (tg.closest('#shClose') || !t) return closeShop();
-    const sg = tg.closest('[data-sg]'); if (sg) { const g = t.stock[+sg.dataset.sg].it; return inspectGear(g, t.stock.filter(x => x.it && x.it.kind === 'gear').map(x => x.it)); }
-    const sb = tg.closest('[data-sbi]'); if (sb) { const g = P.bag[+sb.dataset.sbi]; return inspectGear(g, P.bag.filter(x => typeof x !== 'string')); }
+    const sg = tg.closest('[data-sg]'); if (sg) { const g = t.stock[+sg.dataset.sg].it; return inspectGear(g, t.stock.filter(x => x.it && x.it.kind === 'gear').map(x => x.it), 'shop'); }
+    const sb = tg.closest('[data-sbi]'); if (sb) { const g = P.bag[+sb.dataset.sbi]; return inspectGear(g, P.bag.filter(x => typeof x !== 'string'), 'bag'); }
     const sl = tg.closest('[data-sl]'); if (sl) { const i = +sl.dataset.sl, e2 = P.bag[i]; if (e2 === undefined) return; const p = sellPrice(e2); P.gold += p; P.bag.splice(i, 1); toast('Sold ' + (typeof e2 === 'string' ? ITEMS[e2].name : e2.name) + ' for ' + p + ' gold'); hudDirty = true; return renderShop(); }
     const sp = tg.closest('[data-sp]'); if (sp) { const k = sp.dataset.sp, c = spellBuyCost(k); if (sp.classList.contains('off') || P.spts < c) return;
       P.spts -= c; if (P.spells[k]) { P.spells[k]++; toast(SPELLS[k].name + ' grows stronger (Lv ' + P.spells[k] + ')'); } else { P.spells[k] = 1; fillLoadout(); toast('You learned ' + SPELLS[k].name + '!' + (P.loadout.indexOf(k) < 0 ? ' Your spell slots are full: swap spells at a shrine' : '')); }
