@@ -545,7 +545,7 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ hpotGt: -1e9, hpotSteps: -1e9, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
@@ -590,7 +590,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 39;
+  const BUILD = 40;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1257,9 +1257,18 @@
   const recipeKnown = (r) => P.known[r.id] || Object.keys(r.needs).every(k => P.seen[k]);
   const recipeHinted = (r) => recipeKnown(r) || Object.keys(r.needs).some(k => P.seen[k]);
   const recipeLock = (r) => r.skill && sk(r.skill[0]) < r.skill[1] ? SKILLS.find(x => x.id === r.skill[0]).name + ' skill rank ' + r.skill[1] : '';
+  // health potions can only be brewed every 3 minutes AND every 40 steps, whichever takes longer
+  const HPOT_SECS = 180, HPOT_STEPS = 40;
+  function hpotWait() {
+    const secs = Math.ceil(Math.max(0, (P.hpotGt === undefined ? -1e9 : P.hpotGt) + HPOT_SECS - gt)), steps = Math.max(0, (P.hpotSteps === undefined ? -1e9 : P.hpotSteps) + HPOT_STEPS - stats.steps);
+    if (!secs && !steps) return '';
+    const parts = []; if (secs) parts.push(Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0')); if (steps) parts.push(steps + ' steps');
+    return 'Brewing again in ' + parts.join(' and ');
+  }
   function craftCheck(r) {
     const atS = atShrine();
     const lk = recipeLock(r); if (lk) return 'Needs ' + lk;
+    if (r.id === 'hpot') { const w = hpotWait(); if (w) return w; }
     for (const k in r.needs) if (countOf(k, atS) < r.needs[k]) return 'Missing ' + ITEMS[k].name.toLowerCase();
     let freed = 0; for (const k in r.needs) freed += Math.min(r.needs[k], countOf(k, false)) * isize(k);
     if (bagUsed() - freed + isize(r.id) <= P.bagCap) return '';
@@ -1270,6 +1279,7 @@
     const r = RECIPES.find(x => x.id === id); if (!r || craftCheck(r)) return false;
     for (const k in r.needs) for (let n = 0; n < r.needs[k]; n++) { const i = P.bag.indexOf(k); if (i >= 0) P.bag.splice(i, 1); else S.stash.splice(S.stash.indexOf(k), 1); }
     if (!giveItem(id)) S.stash.push(id);
+    if (id === 'hpot') { P.hpotGt = gt; P.hpotSteps = stats.steps; }
     P.seen[id] = 1; P.known[id] = 1; stats.crafted++; bagSel = null;
     toast('Crafted: ' + ITEMS[id].name + '!'); hudDirty = true;
     const w = toWorld(guy.q, guy.r); burst(w.x, w.y - 14, 14, ['#c8b8ff', '#ffffff', '#ffe14a'], 30, -30, 20);
@@ -3516,6 +3526,7 @@
     h += '<div style="text-align:center;margin-top:8px"><button class="act" id="crClose">Close</button></div>';
     $('craftBox').innerHTML = h;
   }
+  if (!TEST) setInterval(() => { if (craftOpen && P && hpotWait()) { const k = $('craftBox').scrollTop; renderCraft(); $('craftBox').scrollTop = k; } }, 1000);
   if (!TEST) $('craftBox').onclick = (e) => {
     if (e.target.id === 'crClose') return closeCraft();
     const ct = e.target.closest('[data-ct]'); if (ct) { craftTab = ct.dataset.ct; return renderCraft(); }
@@ -3676,7 +3687,7 @@
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, hpotWait, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
