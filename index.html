@@ -141,6 +141,12 @@
   .spell.on { border-color:#ffe14a; box-shadow:0 0 12px #ffe14a; } .spell.off { opacity:.45; } .spell:hover { border-color:#c8b8ff; }
   .sep { width:2px; align-self:stretch; background:#2b3d31; margin:0 2px; }
   .nosp { font-size:10px; color:#6a8070; text-align:center; width:78px; font-weight:400; line-height:1.3; text-shadow:none; }
+  #lvlBanner { position:fixed; left:0; right:0; top:14%; z-index:40; text-align:center; pointer-events:none; opacity:0; }
+  #lvlBanner .lb { display:inline-block; padding:12px 46px 14px; background:linear-gradient(90deg,#0000,#2a1a00ee 18%,#2a1a00ee 82%,#0000); border-top:2px solid #ffd23a; border-bottom:2px solid #ffd23a; }
+  #lvlBanner h1 { margin:0; font-size:44px; letter-spacing:6px; color:#ffd23a; text-shadow:0 0 14px #ff9a1a, 0 3px 0 #6a3a00; }
+  #lvlBanner div { font-size:18px; color:#fff2c8; margin-top:2px; }
+  #lvlBanner.go { animation:lvlpop 3.2s ease-out forwards; }
+  @keyframes lvlpop { 0% { opacity:0; transform:scale(.6); } 8% { opacity:1; transform:scale(1.12); } 14% { transform:scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateY(-12px); } }
   #toast { font-size:18px; } #tip { font-size:14px; }
   .act { font-size:14px; }
   @media (max-width:760px) {
@@ -172,6 +178,7 @@
 <div id="side" class="ui"><div id="gear" class="panel"></div><div id="mapbox" class="panel"><canvas id="mini" width="232" height="150"></canvas></div></div>
 <div id="zoomBtns" class="ui"><button id="zIn" aria-label="Zoom in">+</button><button id="zCtr" aria-label="Reset view">&#9678;</button><button id="zOut" aria-label="Zoom out">&minus;</button></div>
 <div id="tip" class="ui"><span id="tipText"></span></div>
+<div id="lvlBanner" class="ui"><span class="lb"><h1>LEVEL UP!</h1><div id="lvlSub"></div></span></div>
 <div id="toast" class="ui"><span id="toastText"></span></div>
 <div id="bottom" class="ui">
   <div id="actions"></div>
@@ -194,6 +201,7 @@
 <div id="nameAsk" class="modal"><div class="bx" id="nameBox" style="width:min(430px,94vw);text-align:center;border-color:#ffd23a"></div></div>
 <div id="bookAsk" class="modal"><div class="bx" id="bookAskBox" style="width:min(460px,94vw);text-align:center;border-color:#c8a8ff"></div></div>
 <div id="springAsk" class="modal"><div class="bx" id="springBox" style="width:min(420px,94vw);text-align:center;border-color:#5ad0ff"></div></div>
+<div id="warp" class="modal"><div class="bx" id="warpBox" style="width:min(520px,95vw);border-color:#5ad0ff"></div></div>
 <div id="shop" class="modal"><div class="bx" id="shopBox" style="width:min(940px,96vw);border-color:#ffd23a"></div></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
@@ -545,7 +553,7 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ hpotGt: -1e9, hpotSteps: -1e9, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
@@ -590,7 +598,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 40;
+  const BUILD = 41;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -678,11 +686,11 @@
   }
   function placeMon(m, q, r) { m.q = q; m.r = r; const w = toWorld(q, r); m.x = w.x; m.y = w.y; mons.set(key(q, r), m); }
 
-  const randItem = (d) => ({ kind: 'item', id: wpick([['berries', 4], ['meat', 3], ['water', 3], ['hpot', 3 + Math.min(3, d / 60)], ['mpot', 2], ['bomb', 2.5 + Math.min(2, d / 80)], ['cooked', 2], ['stone', 1], ['wood', 1.5], ['vine', 1], ['flint', 1], ['iron', d > 12 ? 1 : 0]]) });
+  const randItem = (d) => ({ kind: 'item', id: wpick([['berries', 2.4], ['meat', 3], ['water', 1.8], ['hpot', 3 + Math.min(3, d / 60)], ['mpot', 2], ['bomb', 2.5 + Math.min(2, d / 80)], ['cooked', 2], ['stone', 1], ['wood', 1.5], ['vine', 1], ['flint', 1], ['iron', d > 12 ? 1 : 0]]) });
   function addDue(list) { for (const x of list) if (S.due.length < 10) S.due.push(x); }
 
   function rollType(d) {
-    const w = [['grass', 26], ['tree', 9], ['bush', 6], ['river', 5], ['stone', 5], ['chest', 5], ['gear', 3.5]];
+    const w = [['grass', 26], ['tree', 9], ['bush', 3.6], ['river', 3], ['stone', 5], ['chest', 5], ['gear', 3.5]];
     if (d >= 2) w.push(['monster', 14 + Math.min(16, d / 10)]);
     if (d >= 4) w.push(['rune', 2]);
     if (d >= 6) w.push(['vines', 3], ['flint', 2.5], ['burning', 1.4]);
@@ -914,9 +922,15 @@
   // =====================================================
   //  TILE INTERACTION
   // =====================================================
+  function levelBanner(n) {
+    if (TEST) return; const el = $('lvlBanner');
+    $('lvlSub').textContent = 'Level ' + P.lvl + (n > 1 ? ' (+' + n + ' levels)' : '') + '  ·  ' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend (press K)';
+    el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+  }
   function gainXp(n) {
-    P.xp += n;
-    while (P.xp >= xpNeed(P.lvl)) { P.xp -= xpNeed(P.lvl); P.lvl++; P.sp++; P.hp = maxHP(); P.mp = maxMP(); toast('LEVEL UP! Level ' + P.lvl + '. You have ' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend (press K)'); }
+    P.xp += n; let gained = 0;
+    while (P.xp >= xpNeed(P.lvl)) { P.xp -= xpNeed(P.lvl); P.lvl++; P.sp++; P.hp = maxHP(); P.mp = maxMP(); gained++; }
+    if (gained) levelBanner(gained);
     hudDirty = true;
   }
   function clampVitals() { P.hp = Math.min(P.hp, maxHP()); P.mp = Math.min(P.mp, maxMP()); }
@@ -1099,6 +1113,7 @@
         else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
         else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
         if (pet) pet.hp = pet.max; hudDirty = true; later(spawnMist, 1200); } }); }
+    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { openWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
@@ -1257,18 +1272,9 @@
   const recipeKnown = (r) => P.known[r.id] || Object.keys(r.needs).every(k => P.seen[k]);
   const recipeHinted = (r) => recipeKnown(r) || Object.keys(r.needs).some(k => P.seen[k]);
   const recipeLock = (r) => r.skill && sk(r.skill[0]) < r.skill[1] ? SKILLS.find(x => x.id === r.skill[0]).name + ' skill rank ' + r.skill[1] : '';
-  // health potions can only be brewed every 3 minutes AND every 40 steps, whichever takes longer
-  const HPOT_SECS = 180, HPOT_STEPS = 40;
-  function hpotWait() {
-    const secs = Math.ceil(Math.max(0, (P.hpotGt === undefined ? -1e9 : P.hpotGt) + HPOT_SECS - gt)), steps = Math.max(0, (P.hpotSteps === undefined ? -1e9 : P.hpotSteps) + HPOT_STEPS - stats.steps);
-    if (!secs && !steps) return '';
-    const parts = []; if (secs) parts.push(Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0')); if (steps) parts.push(steps + ' steps');
-    return 'Brewing again in ' + parts.join(' and ');
-  }
   function craftCheck(r) {
     const atS = atShrine();
     const lk = recipeLock(r); if (lk) return 'Needs ' + lk;
-    if (r.id === 'hpot') { const w = hpotWait(); if (w) return w; }
     for (const k in r.needs) if (countOf(k, atS) < r.needs[k]) return 'Missing ' + ITEMS[k].name.toLowerCase();
     let freed = 0; for (const k in r.needs) freed += Math.min(r.needs[k], countOf(k, false)) * isize(k);
     if (bagUsed() - freed + isize(r.id) <= P.bagCap) return '';
@@ -1279,7 +1285,6 @@
     const r = RECIPES.find(x => x.id === id); if (!r || craftCheck(r)) return false;
     for (const k in r.needs) for (let n = 0; n < r.needs[k]; n++) { const i = P.bag.indexOf(k); if (i >= 0) P.bag.splice(i, 1); else S.stash.splice(S.stash.indexOf(k), 1); }
     if (!giveItem(id)) S.stash.push(id);
-    if (id === 'hpot') { P.hpotGt = gt; P.hpotSteps = stats.steps; }
     P.seen[id] = 1; P.known[id] = 1; stats.crafted++; bagSel = null;
     toast('Crafted: ' + ITEMS[id].name + '!'); hudDirty = true;
     const w = toWorld(guy.q, guy.r); burst(w.x, w.y - 14, 14, ['#c8b8ff', '#ffffff', '#ffe14a'], 30, -30, 20);
@@ -3478,6 +3483,28 @@
     el.style.display = 'flex'; awakenT = performance.now(); flash = 1;
     el.onclick = () => { if (performance.now() - awakenT > 1500) { el.style.display = 'none'; hudDirty = true; toast('You are awakened! A fresh skill tree awaits (press K)'); } };
   }
+  // ---------- shrine warping ----------
+  let warpOpen = false;
+  const shrineList = () => { if (S.cave) return []; const out = []; for (const t of tiles.values()) if (t.type === 'shrine' && !(t.q === guy.q && t.r === guy.r)) out.push({ t, d: hd(t.q - guy.q, t.r - guy.r) }); return out.sort((a, b) => a.d - b.d); };
+  function openWarp() { if (TEST || B || !atShrine()) return; warpOpen = true; $('warp').style.display = 'flex'; renderWarp(); }
+  function closeWarp() { warpOpen = false; $('warp').style.display = 'none'; hudDirty = true; }
+  function renderWarp() {
+    if (TEST || !warpOpen) return; const cr = countOf('crystal', true), list = shrineList();
+    let h = '<h2>SHRINE WARP</h2><div class="note" style="margin:0 0 8px">Spend 1 crystal (bag or stash) to step through to a shrine you have already found. You have ' + cr + '.</div>';
+    list.forEach((e, i) => { h += '<div class="rec"><span class="grow"><b>' + (e.t.q === 0 && e.t.r === 0 ? 'Starting shrine' : 'Shrine') + '</b><br>' + e.d + ' tile' + (e.d === 1 ? '' : 's') + ' away' + (S.cp === e.t ? ' · your checkpoint' : '') + '</span><button class="act' + (cr ? ' buy' : ' off') + '" data-w="' + i + '">Warp<small>' + (cr ? '1 crystal' : 'no crystal') + '</small></button></div>'; });
+    if (!list.length) h += '<div class="note">No other shrines yet.</div>';
+    h += '<div style="text-align:center;margin-top:8px"><button class="act" id="wpClose">Close</button></div>';
+    $('warpBox').innerHTML = h;
+  }
+  function warpTo(i) {
+    const e = shrineList()[i]; if (!e || B || S.cave || !atShrine() || !countOf('crystal', true)) return;
+    const k = P.bag.indexOf('crystal'); if (k >= 0) P.bag.splice(k, 1); else S.stash.splice(S.stash.indexOf('crystal'), 1);
+    closeWarp(); guy.q = e.t.q; guy.r = e.t.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null; sel = null; aim = null;
+    if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
+    flash = 1; cam.x = w.x; cam.y = w.y - 6; burst(w.x, w.y - 14, 18, ['#5ad0ff', '#ffffff', '#c8b8ff'], 30, -30, 20);
+    toast('The crystal shatters and carries you to the shrine'); onEnter(e.t); hudDirty = true; later(saveNow, 50);
+  }
+  if (!TEST) $('warpBox').onclick = (e) => { if (e.target.closest('#wpClose')) return closeWarp(); const b = e.target.closest('[data-w]'); if (b && !b.classList.contains('off')) warpTo(+b.dataset.w); };
   function openSkills() { if (TEST) return; skillsOpen = true; bagSel = null; aim = null; $('skills').style.display = 'flex'; renderSkills(); }
   function closeSkills() { skillsOpen = false; $('skills').style.display = 'none'; hudDirty = true; }
   function renderSkills() {
@@ -3526,7 +3553,6 @@
     h += '<div style="text-align:center;margin-top:8px"><button class="act" id="crClose">Close</button></div>';
     $('craftBox').innerHTML = h;
   }
-  if (!TEST) setInterval(() => { if (craftOpen && P && hpotWait()) { const k = $('craftBox').scrollTop; renderCraft(); $('craftBox').scrollTop = k; } }, 1000);
   if (!TEST) $('craftBox').onclick = (e) => {
     if (e.target.id === 'crClose') return closeCraft();
     const ct = e.target.closest('[data-ct]'); if (ct) { craftTab = ct.dataset.ct; return renderCraft(); }
@@ -3653,7 +3679,7 @@
     if (e.key === 'Escape') { if (inspectOpen) closeInspect(); else if (shopOpen) closeShop(); if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
   // left or right click on the dim area outside a window closes it (battle, name, book choice, awaken, game-over and update windows stay open)
-  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), hall: () => hallOpen && closeHall(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
+  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), warp: () => warpOpen && closeWarp(), hall: () => hallOpen && closeHall(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
     let downEl = null; window.addEventListener('mousedown', (e) => { downEl = e.target; }, true);
     const out = (e) => { const el = e.target; if (el && el.classList && el.classList.contains('modal') && OUT[el.id] && (e.type === 'contextmenu' || downEl === el)) { OUT[el.id](); } };
     window.addEventListener('click', out); window.addEventListener('contextmenu', out); }
@@ -3687,7 +3713,7 @@
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, hpotWait, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
