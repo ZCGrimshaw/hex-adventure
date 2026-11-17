@@ -590,7 +590,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 37;
+  const BUILD = 38;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -3073,6 +3073,255 @@
   const exportText = () => JSON.stringify(runSummary(), null, 1);
   const exportFull = () => JSON.stringify(snapshot(), mapJson);
   function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
+  // ---------- music ----------
+  // Procedural chiptune music. The sound engine is ZzFX by Frank Force and the tracker/renderer is ZzFXM by Keith Clark
+  // and Frank Force, both MIT licensed (https://github.com/KilledByAPixel/ZzFX, https://github.com/keithclark/ZzFXM).
+  // The seeded composer below (scales, chord loops, drum patterns per scene) is original to this game.
+  // Songs are rendered off the main thread in a Web Worker, then looped by Web Audio.
+  function musLib() {
+    var zzfxV=.3,zzfxR=44100;
+    var zzfxG=(q=1,k=.05,c=220,e=0,t=0,u=.1,r=0,F=1,v=0,z=0,w=0,A=0,l=0,B=0,x=0,G=0,d=0,y=1,m=0,C=0)=>{let b=2*Math.PI,H=v*=500*b/zzfxR**2,I=(0<x?1:-1)*b/4,D=c*=(1+2*k*Math.random()-k)*b/zzfxR,Z=[],g=0,E=0,a=0,n=1,J=0,K=0,f=0,p,h;e=99+zzfxR*e;m*=zzfxR;t*=zzfxR;u*=zzfxR;d*=zzfxR;z*=500*b/zzfxR**3;x*=b/zzfxR;w*=b/zzfxR;A*=zzfxR;l=zzfxR*l|0;for(h=e+m+t+u+d|0;a<h;Z[a++]=f)++K%(100*G|0)||(f=r?1<r?2<r?3<r?Math.sin((g%b)**3):Math.max(Math.min(Math.tan(g),1),-1):1-(2*g/b%2+2)%2:1-4*Math.abs(Math.round(g/b)-g/b):Math.sin(g),f=(l?1-C+C*Math.sin(2*Math.PI*a/l):1)*(0<f?1:-1)*Math.abs(f)**F*q*zzfxV*(a<e?a/e:a<e+m?1-(a-e)/m*(1-y):a<e+m+t?y:a<h-d?(h-a-d)/u*y:0),f=d?f/2+(d>a?0:(a<h-d?1:(h-a)/d)*Z[a-d|0]/2):f),p=(c+=v+=z)*Math.sin(E*x-I),g+=p-p*B*(1-1E9*(Math.sin(a)+1)%2),E+=p-p*B*(1-1E9*(Math.sin(a)**2+1)%2),n&&++n>A&&(c+=w,D+=w,n=0),!l||++J%l||(c=D,v=H,n=n||1);return Z};
+    var zzfxM = (instruments, patterns, sequence, BPM = 125) => {
+      let instrumentParameters;
+      let i;
+      let j;
+      let k;
+      let note;
+      let sample;
+      let patternChannel;
+      let notFirstBeat;
+      let stop;
+      let instrument;
+      let pitch;
+      let attenuation;
+      let outSampleOffset;
+      let isSequenceEnd;
+      let sampleOffset = 0;
+      let nextSampleOffset;
+      let sampleBuffer = [];
+      let leftChannelBuffer = [];
+      let rightChannelBuffer = [];
+      let channelIndex = 0;
+      let panning = 0;
+      let hasMore = 1;
+      let sampleCache = {};
+      let beatLength = zzfxR / BPM * 60 >> 2;
+
+      // for each channel in order until there are no more
+      for(; hasMore; channelIndex++) {
+
+        // reset current values
+        sampleBuffer = [hasMore = notFirstBeat = pitch = outSampleOffset = 0];
+
+        // for each pattern in sequence
+        sequence.map((patternIndex, sequenceIndex) => {
+          // get pattern for current channel, use empty 1 note pattern if none found
+          patternChannel = patterns[patternIndex][channelIndex] || [0, 0, 0];
+
+          // check if there are more channels
+          hasMore |= !!patterns[patternIndex][channelIndex];
+
+          // get next offset, use the length of first channel
+          nextSampleOffset = outSampleOffset + (patterns[patternIndex][0].length - 2 - !notFirstBeat) * beatLength;
+          // for each beat in pattern, plus one extra if end of sequence
+          isSequenceEnd = sequenceIndex == sequence.length - 1;
+          for (i = 2, k = outSampleOffset; i < patternChannel.length + isSequenceEnd; notFirstBeat = ++i) {
+
+            // <channel-note>
+            note = patternChannel[i];
+
+            // stop if end, different instrument or new note
+            stop = i == patternChannel.length + isSequenceEnd - 1 && isSequenceEnd ||
+                instrument != (patternChannel[0] || 0) | note | 0;
+
+            // fill buffer with samples for previous beat, most cpu intensive part
+            for (j = 0; j < beatLength && notFirstBeat;
+
+                // fade off attenuation at end of beat if stopping note, prevents clicking
+                j++ > beatLength - 99 && stop ? attenuation += (attenuation < 1) / 99 : 0
+            ) {
+              // copy sample to stereo buffers with panning
+              sample = (1 - attenuation) * sampleBuffer[sampleOffset++] / 2 || 0;
+              leftChannelBuffer[k] = (leftChannelBuffer[k] || 0) - sample * panning + sample;
+              rightChannelBuffer[k] = (rightChannelBuffer[k++] || 0) + sample * panning + sample;
+            }
+
+            // set up for next note
+            if (note) {
+              // set attenuation
+              attenuation = note % 1;
+              panning = patternChannel[1] || 0;
+              if (note |= 0) {
+                // get cached sample
+                sampleBuffer = sampleCache[
+                  [
+                    instrument = patternChannel[sampleOffset = 0] || 0,
+                    note
+                  ]
+                ] = sampleCache[[instrument, note]] || (
+                    // add sample to cache
+                    instrumentParameters = [...instruments[instrument]],
+                    instrumentParameters[2] *= 2 ** ((note - 12) / 12),
+
+                    // allow negative values to stop notes
+                    note > 0 ? zzfxG(...instrumentParameters) : []
+                );
+              }
+            }
+          }
+
+          // update the sample offset
+          outSampleOffset = nextSampleOffset;
+        });
+      }
+
+      return [leftChannelBuffer, rightChannelBuffer];
+    }
+    const MZ_INST = [
+     [0.5,0,261.63,0.004,0.1,0.16,1,0.55,0,0,0,0,0,0,0,0,0,0.8,0.03,0],   // 0 lead (soft triangle-ish)
+     [0.9,0,65.41,0.003,0.12,0.14,0,0.5,0,0,0,0,0,0,0,0,0,0.9,0.02,0],    // 1 bass
+     [0.4,0,261.63,0.003,0.04,0.14,1,1,0,0,0,0,0,0,0,0,0,0.7,0.02,0],     // 2 arp
+     [0.35,0,130.81,0.12,0.5,0.45,0,1,0,0,0,0,0,0,0,0,0,0.8,0.1,0],       // 3 pad
+     [1.2,0,160,0.001,0.01,0.16,0,1,-1.5,0,0,0,0,0,0,0,0,0.9,0.01,0],     // 4 kick
+     [0.8,0,190,0.001,0,0.14,0,1,0,0,0,0,0,1.0,0,0,0,0.7,0.02,0],         // 5 snare
+     [0.45,0,9000,0.001,0,0.05,4,1,0,0,0,0,0,3,0,0,0,0.6,0.005,0],        // 6 hat
+     [0.5,0,523.25,0.002,0.02,0.5,0,1,0,0,0,0,0,0,0,0,0.12,0.4,0.05,0]    // 7 bell
+    ];
+    const MZ_SCENES = {
+     adventure: { bpm: 112, scale: [0,2,4,5,7,9,11], prog: [[0,4,5,3],[0,5,3,4],[0,3,4,0],[5,3,0,4]], lead: .62, arp: 1, drums: 'soft', bass: 'walk', pad: 1, bell: 0, oct: 1 },
+     shop:      { bpm: 92,  scale: [0,2,4,7,9],        prog: [[0,3,1,4],[0,2,3,1],[1,3,0,4]],           lead: .4,  arp: 0, drums: 'hat',  bass: 'sway', pad: 1, bell: 1, oct: 1 },
+     cave:      { bpm: 64,  scale: [0,1,3,5,7,8,10],   prog: [[0,5,3,4],[0,3,0,6],[0,4,5,1]],           lead: .16, arp: 0, drums: 'none', bass: 'drone', pad: 2, bell: 1, oct: 1 },
+     battle:    { bpm: 148, scale: [0,2,3,5,7,8,10],   prog: [[0,5,3,6],[0,3,5,4],[0,0,5,6],[0,6,5,4]], lead: .7,  arp: 1, drums: 'drive', bass: 'eighth', pad: 0, bell: 0, oct: 1 },
+     boss:      { bpm: 158, scale: [0,1,4,5,7,8,10],   prog: [[0,1,0,5],[0,5,1,0],[0,3,1,0]],           lead: .75, arp: 1, drums: 'heavy', bass: 'sixteenth', pad: 0, bell: 0, oct: 1 }
+    };
+    function mzRng(s) { s >>>= 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+    function mzCompose(scene, seed) {
+      const S = MZ_SCENES[scene] || MZ_SCENES.adventure, R = mzRng(seed * 7919 + scene.length * 131), N = S.scale.length;
+      const deg = (d) => S.scale[((d % N) + N) % N] + 12 * Math.floor(d / N);
+      const prog = S.prog[Math.floor(R() * S.prog.length)];
+      const rootShift = [0, 0, 2, 5, 7][Math.floor(R() * 5)] - (scene === 'boss' || scene === 'battle' ? 0 : 0); // transpose a little
+      const T = (n) => n + (rootShift > 6 ? rootShift - 12 : rootShift);
+      const ROWS = 16, pats = [], seq = [];
+      // two lead phrases (A, B) reused across the 4 bars; B plays on bars 5-8
+      const phrase = () => { const p = []; let d = N + Math.floor(R() * 3); for (let i = 0; i < ROWS; i++) { const strong = i % 4 === 0, on = strong ? R() < .9 : R() < S.lead * .55; if (!on) { p.push(0); continue; } const step = Math.floor(R() * 5) - 2; d = Math.max(N - 2, Math.min(N * 2 + 2, d + step)); p.push(d); } return p; };
+      const phrases = [[phrase(), phrase(), phrase(), phrase()], [phrase(), phrase(), phrase(), phrase()]];
+      const drum = (kind, bar) => {
+        const k = [], s = [], h = [];
+        for (let i = 0; i < ROWS; i++) {
+          let kk = 0, ss = 0, hh = 0;
+          if (kind === 'soft') { kk = i % 8 === 0 ? 1 : 0; hh = i % 4 === 2 ? .3 : 0; ss = i === 12 ? .2 : 0; }
+          else if (kind === 'hat') { hh = i % 2 === 0 ? (i % 4 === 0 ? .4 : .55) : 0; }
+          else if (kind === 'drive') { kk = (i % 8 === 0 || (i === 10)) ? 1 : 0; ss = (i === 4 || i === 12) ? 1 : 0; hh = i % 2 === 0 ? (i % 4 === 0 ? .2 : .5) : 0; }
+          else if (kind === 'heavy') { kk = (i % 4 === 0 || i === 6 || i === 14) ? 1 : 0; ss = (i === 4 || i === 12 || (bar === 3 && i >= 13)) ? 1 : 0; hh = i % 2 === 1 ? .5 : .2; }
+          k.push(kk || 0); s.push(ss || 0); h.push(hh || 0);
+        }
+        return [k, s, h];
+      };
+      for (let v = 0; v < 2; v++) for (let b = 0; b < 4; b++) {
+        const r = prog[b], tri = [r, r + 2, r + 4].map(deg);
+        // lead: hold notes until the next onset (0 = sustain, rest = -1 when the bar's last note ends)
+        const leadRow = []; for (let i = 0; i < ROWS; i++) leadRow.push(phrases[v][b][i] ? T(deg(phrases[v][b][i])) + 12 : 0);
+        const bassRow = []; for (let i = 0; i < ROWS; i++) {
+          const root = T(deg(r)) , lo = root - 12 + 12; let n = 0;
+          if (S.bass === 'drone') n = i === 0 ? lo + 0 : 0;
+          else if (S.bass === 'sway') n = i % 8 === 0 ? lo : (i % 8 === 4 ? lo + 7 : 0);
+          else if (S.bass === 'walk') n = i % 4 === 0 ? (i % 8 === 4 ? lo + 7 : lo) : 0;
+          else if (S.bass === 'eighth') n = i % 2 === 0 ? (i === 14 ? lo + 7 : lo) : 0;
+          else n = (i % 2 === 0 || i % 4 === 3) ? (i % 8 === 6 ? lo + 1 : lo) : 0;
+          bassRow.push(n);
+        }
+        const arpRow = []; for (let i = 0; i < ROWS; i++) arpRow.push(S.arp ? T(tri[[0, 1, 2, 1][i % 4]]) + 12 + (i % 8 >= 4 ? 12 : 0) : 0);
+        const padRow = []; for (let i = 0; i < ROWS; i++) padRow.push(i === 0 ? T(tri[0]) + 12 : (S.pad === 2 && i === 8 ? T(tri[2]) + 12 : 0));
+        const pad2 = []; for (let i = 0; i < ROWS; i++) pad2.push(i === 0 ? T(tri[1]) + 12 : 0);
+        const bellRow = []; for (let i = 0; i < ROWS; i++) bellRow.push(S.bell && R() < .17 && i % 2 === 0 ? T(deg(r + [0, 2, 4, 7][Math.floor(R() * 4)])) + 12 + 12 : 0);
+        const [k, s, h] = drum(S.drums, b);
+        const ch = [];
+        ch.push([0, -.25, ...leadRow.map(x => x || 0)]);                                  // 0 lead (first channel sets length)
+        ch.push([1, 0, ...bassRow]);
+        if (S.arp) ch.push([2, .35, ...arpRow.map(x => x)]);
+        if (S.pad) { ch.push([3, -.4, ...padRow]); ch.push([3, .4, ...pad2]); }
+        if (S.bell) ch.push([7, .5, ...bellRow]);
+        if (S.drums !== 'none') { ch.push([4, 0, ...k.map(x => x ? 12 : 0)]); ch.push([5, 0, ...s.map(x => x ? 12 + (1 - x) * .5 : 0)]); ch.push([6, .15, ...h.map(x => x ? 12 + (1 - x) * .6 : 0)]); }
+        pats.push(ch);
+      }
+      for (let i = 0; i < 8; i++) seq.push(i);
+      return [MZ_INST, pats, seq, S.bpm];
+    }
+    function run(scene, seed) {
+      const s = mzCompose(scene, seed), lr = zzfxM(s[0], s[1], s[2], s[3]), n = lr[0].length, a = new Float32Array(n), b = new Float32Array(n);
+      let pk = 0; for (let i = 0; i < n; i++) { a[i] = lr[0][i] || 0; b[i] = lr[1][i] || 0; const v = Math.max(Math.abs(a[i]), Math.abs(b[i])); if (v > pk) pk = v; }
+      const k = pk > .9 ? .9 / pk : 1; for (let i = 0; i < n; i++) { const f = k * Math.min(1, (n - i) / 400); a[i] *= f; b[i] *= f; }
+      return [a, b];
+    }
+    return { run };
+  }
+  const Mus = { on: true, vol: .6, ctx: null, master: null, cur: null, bank: {}, pend: {}, w: null, wFail: false, lib: null, started: false };
+  const MUS_NAMES = { adventure: 'Adventure', shop: 'Shop', cave: 'Cave', battle: 'Battle', boss: 'Boss battle' };
+  try { if (localStorage.getItem('hexmusic') === '0') Mus.on = false; const v = parseFloat(localStorage.getItem('hexmusicvol')); if (v >= 0 && v <= 1) Mus.vol = v; } catch (e) {}
+  const musSave = () => { try { localStorage.setItem('hexmusic', Mus.on ? '1' : '0'); localStorage.setItem('hexmusicvol', String(Mus.vol)); } catch (e) {} };
+  const musGain = () => Mus.on ? Mus.vol * Mus.vol * 1.8 : 0;
+  function musWant() {
+    if (!S) return 'adventure';
+    if (B && B.m) return (B.m.boss || B.m.warden) ? 'boss' : 'battle';
+    if (shopOpen) return 'shop';
+    return S.cave ? 'cave' : 'adventure';
+  }
+  function musInit() {
+    if (Mus.ctx) return; const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    try { Mus.ctx = new AC(); Mus.master = Mus.ctx.createGain(); Mus.master.gain.value = musGain(); Mus.master.connect(Mus.ctx.destination); } catch (e) { Mus.ctx = null; }
+  }
+  function musDone(scene, a, b) {
+    Mus.pend[scene] = 0; const ctx = Mus.ctx; if (!ctx) return;
+    const buf = ctx.createBuffer(2, a.length, 44100); buf.copyToChannel(a, 0); buf.copyToChannel(b, 1);
+    (Mus.bank[scene] = Mus.bank[scene] || []).push(buf); musTick();
+  }
+  function musGen(scene) {
+    if (Mus.pend[scene] || !Mus.ctx) return; Mus.pend[scene] = 1; const seed = (Math.random() * 1e6) | 0;
+    const fallback = () => setTimeout(() => { try { const lib = Mus.lib || (Mus.lib = musLib()), r = lib.run(scene, seed); musDone(scene, r[0], r[1]); } catch (e) { Mus.pend[scene] = 0; } }, 30);
+    if (!Mus.w && !Mus.wFail) {
+      try {
+        const src = 'const musLib = ' + musLib.toString() + ';(' + function () { const lib = musLib(); onmessage = function (e) { const d = e.data, r = lib.run(d.scene, d.seed); postMessage({ scene: d.scene, a: r[0], b: r[1] }, [r[0].buffer, r[1].buffer]); }; }.toString() + ')()';
+        Mus.w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        Mus.w.onmessage = (e) => musDone(e.data.scene, e.data.a, e.data.b);
+        Mus.w.onerror = () => { Mus.w = null; Mus.wFail = true; Mus.pend = {}; };
+      } catch (e) { Mus.w = null; Mus.wFail = true; }
+    }
+    if (Mus.w) Mus.w.postMessage({ scene, seed }); else fallback();
+  }
+  function musFade(o) {
+    const t = Mus.ctx.currentTime; o.src.onended = null; o.g.gain.cancelScheduledValues(t); o.g.gain.setValueAtTime(o.g.gain.value, t); o.g.gain.linearRampToValueAtTime(0, t + .5);
+    try { o.src.stop(t + .6); } catch (e) {}
+  }
+  function musPlay(scene) {
+    const bank = Mus.bank[scene]; if (!bank || !bank.length) { musGen(scene); return false; }
+    const ctx = Mus.ctx, buf = bank.shift(), g = ctx.createGain(), src = ctx.createBufferSource(), t = ctx.currentTime;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + .5); src.buffer = buf; src.connect(g); g.connect(Mus.master); src.start();
+    const me = { scene, src, g }; src.onended = () => { if (Mus.cur === me) { Mus.cur = null; musTick(); } };
+    if (Mus.cur) musFade(Mus.cur); Mus.cur = me;
+    if (!bank.length) musGen(scene);
+    return true;
+  }
+  function musTick() {
+    const ctx = Mus.ctx; if (TEST || !ctx || !Mus.on || ctx.state !== 'running') return;
+    const want = musWant(); if (Mus.cur && Mus.cur.scene === want) return;
+    if (!musPlay(want)) return;
+  }
+  // after the current song is going, quietly pre-render the other scenes (one at a time) so changes are instant
+  function musPrefetch() {
+    if (!Mus.ctx || !Mus.cur || Object.values(Mus.pend).some(Boolean)) return;
+    for (const sc of ['battle', 'shop', 'cave', 'boss', 'adventure']) if (!(Mus.bank[sc] && Mus.bank[sc].length)) { musGen(sc); return; }
+  }
+  function musApply() {
+    if (!Mus.ctx) return; Mus.master.gain.setTargetAtTime(musGain(), Mus.ctx.currentTime, .05);
+    if (!Mus.on) { if (Mus.cur) { musFade(Mus.cur); Mus.cur = null; } } else musTick();
+  }
+  function musSkip() { if (!Mus.ctx || !Mus.on) return; const old = Mus.cur; Mus.cur = null; if (old) musFade(old); musTick(); if (!Mus.cur && old) Mus.cur = null; }
+  if (!TEST) {
+    const first = () => { musInit(); if (Mus.ctx) Mus.ctx.resume().then(() => { if (Mus.ctx.state === 'running') { Mus.started = true; if (Mus.on) { musGen('adventure'); } ['pointerdown', 'keydown'].forEach(ev => window.removeEventListener(ev, first, true)); } }).catch(() => {}); };
+    ['pointerdown', 'keydown'].forEach(ev => window.addEventListener(ev, first, true));
+    document.addEventListener('visibilitychange', () => { if (!Mus.ctx) return; if (document.hidden) Mus.ctx.suspend(); else if (Mus.on) Mus.ctx.resume(); });
+    setInterval(() => { musTick(); musPrefetch(); }, 400);
+  }
   function openMenu(tab) { if (TEST || B || S.state !== 'play') return; menuOpen = true; if (tab) menuTab = tab; $('gmenu').style.display = 'flex'; renderMenu(); }
   function closeMenu() { menuOpen = false; $('gmenu').style.display = 'none'; hudDirty = true; }
   function guideHTML() {
@@ -3090,10 +3339,15 @@
   }
   function renderMenu() {
     if (TEST || !menuOpen) return;
-    const tabs = [['guide', 'How to play'], ['export', 'Export game info']];
+    const tabs = [['guide', 'How to play'], ['music', 'Music'], ['export', 'Export game info']];
     let h = '<h2>MENU</h2><div style="display:flex;gap:6px;justify-content:center;margin-bottom:8px">' + tabs.map(([k, l]) => '<button class="act' + (menuTab === k ? ' hot' : '') + '" data-mt="' + k + '">' + l + '</button>').join('') + '</div>';
     if (menuTab === 'guide') h += '<div style="text-align:left;font-size:14px">' + guideHTML() + '</div>';
-    else {
+    else if (menuTab === 'music') {
+      h += '<div style="text-align:left;font-size:14px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px"><button class="act' + (Mus.on ? ' hot' : '') + '" id="musOn">Music: ' + (Mus.on ? 'ON' : 'OFF') + '</button><button class="act" id="musSkip">Next song</button></div>' +
+        '<label style="display:flex;gap:10px;align-items:center;margin-bottom:10px">Volume <input type="range" id="musVol" min="0" max="100" value="' + Math.round(Mus.vol * 100) + '" style="flex:1;max-width:320px"> <span id="musVolT">' + Math.round(Mus.vol * 100) + '%</span></label>' +
+        '<div class="note" style="margin:0 0 8px">' + (Mus.ctx && Mus.ctx.state === 'running' ? (Mus.on ? 'Now playing: ' + (Mus.cur ? MUS_NAMES[Mus.cur.scene] : 'getting ready...') : 'Music is off.') : 'Music starts as soon as you click or press a key in the game.') + '</div>' +
+        '<div class="note" style="margin:0">The music is composed fresh as you play: calm adventure tunes, a jaunty shop theme, a dark cave drone, and faster themes for battles and bosses. Sound engine: ZzFX by Frank Force and ZzFXM by Keith Clark and Frank Force (MIT licence).</div></div>';
+    } else {
       const txt = exportText();
       h += '<div class="note" style="margin:0 0 8px">Share your run so it can be looked at: copy the summary or download the full save, and paste or attach it in your chat with Claude. It holds your build number, stats, gear, skills, spells and map totals, and nothing personal (no name or account).</div>' +
         '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:8px"><button class="act" id="exCopy">Copy summary<small>paste it into a chat</small></button><button class="act alt" id="exDl">Download summary<small>.json file</small></button><button class="act buy" id="exFull">Download full save<small>includes the whole map</small></button></div>' +
@@ -3102,10 +3356,13 @@
     h += '<div style="text-align:center;margin-top:8px"><button class="act" id="mnClose">Close</button></div>';
     const keep = $('menuBox').scrollTop; $('menuBox').innerHTML = h; $('menuBox').scrollTop = keep;
   }
+  if (!TEST) $('menuBox').addEventListener('input', (e) => { if (e.target.id === 'musVol') { Mus.vol = e.target.value / 100; $('musVolT').textContent = e.target.value + '%'; musSave(); if (Mus.ctx) Mus.master.gain.setTargetAtTime(musGain(), Mus.ctx.currentTime, .03); } });
   if (!TEST) $('menuBox').onclick = (e) => {
     const t = e.target;
     if (t.closest('#mnClose')) return closeMenu();
     const mt = t.closest('[data-mt]'); if (mt) { menuTab = mt.dataset.mt; $('menuBox').scrollTop = 0; return renderMenu(); }
+    if (t.closest('#musOn')) { musInit(); if (Mus.ctx) Mus.ctx.resume(); Mus.on = !Mus.on; musSave(); musApply(); return renderMenu(); }
+    if (t.closest('#musSkip')) { musSkip(); return; }
     const nm = 'hex-adventure-b' + BUILD + '-' + S.revealed + 'tiles';
     if (t.closest('#exCopy')) { const txt = exportText(); const done = () => toast('Copied! Paste it into your chat'); const fb = () => { const ta = $('exText'); ta.select(); try { document.execCommand('copy'); done(); } catch (_) { toast('Select the text and copy it'); } };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fb); else fb(); return; }
@@ -3384,6 +3641,11 @@
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.key === 'Escape') { if (inspectOpen) closeInspect(); else if (shopOpen) closeShop(); if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
+  // left or right click on the dim area outside a window closes it (battle, name, book choice, awaken, game-over and update windows stay open)
+  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), hall: () => hallOpen && closeHall(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
+    let downEl = null; window.addEventListener('mousedown', (e) => { downEl = e.target; }, true);
+    const out = (e) => { const el = e.target; if (el && el.classList && el.classList.contains('modal') && OUT[el.id] && (e.type === 'contextmenu' || downEl === el)) { OUT[el.id](); } };
+    window.addEventListener('click', out); window.addEventListener('contextmenu', out); }
   if (!TEST) $('inspect').addEventListener('click', (e) => { if (e.target.closest('[data-ieq]')) { const g = inspList[inspIdx], ct = curTile(), i = ct ? ct.loot.indexOf(g) : -1;
       if (i >= 0) { equipFrom(ct, i); if (!ct.loot.length) ct.grave = false; toast('Equipped ' + g.name); } else if (P.bag.indexOf(g) >= 0) equipBag(P.bag.indexOf(g)); closeInspect(); hudDirty = true; return; }
     const b = e.target.closest('[data-ic]'); if (b) return inspectCycle(+b.dataset.ic); if (!e.target.closest('.bx')) closeInspect(); });
@@ -3413,7 +3675,7 @@
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
-  window.__g3 = { get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
+  window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
