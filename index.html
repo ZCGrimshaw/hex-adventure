@@ -65,7 +65,7 @@
   .modal { position:fixed; inset:0; background:#000b; display:none; align-items:center; justify-content:center; z-index:10; }
   .bx { width:min(620px,95vw); max-height:94vh; overflow:auto; background:linear-gradient(#142219,#0a120d); border:3px solid #7dff8f; border-radius:10px; padding:12px 14px; box-sizing:border-box; box-shadow:0 0 30px #7dff8f33; }
   .bx h2 { margin:0 0 8px; font-size:19px; text-align:center; letter-spacing:2px; }
-  #bc { width:100%; aspect-ratio:160/84; border:2px solid #000; border-radius:6px; display:block; background:#000; }
+  #bc { width:100%; max-width:max(240px, calc((100vh / var(--uz, 1) - 330px) * 1.9)); margin:0 auto; aspect-ratio:160/84; border:2px solid #000; border-radius:6px; display:block; background:#000; }
   .bstats { display:flex; gap:12px; margin-top:6px; } .bstats > div { flex:1; }
   #bLog { height:80px; overflow:hidden; margin:8px 0; background:#050a07; border:1px solid #33463a; border-radius:5px; padding:6px 8px; font-size:13px; line-height:1.4; font-weight:400; display:flex; flex-direction:column; justify-content:flex-end; }
   #bBtns { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
@@ -88,6 +88,7 @@
   #upd { position:fixed; inset:0; z-index:95; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.84); }
   #upd .ub { zoom:var(--uz); background:linear-gradient(#2a2410,#14100a); border:2px solid #ffd23a; border-radius:10px; padding:16px 20px; display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; box-shadow:0 0 24px #ffd23a66; font-size:13px; max-width:min(440px,92vw); }
   #upd b { color:#ffe14a; font-size:17px; letter-spacing:1px; } #upd .act { min-width:0; } #upd span { font-weight:400; }
+  #hallBoard, #hgBoard { max-height: calc(60vh / var(--uz, 1)); overflow:auto; }
   .hog { width:100%; border-collapse:collapse; font-size:13px; margin:6px 0; }
   .hog th { text-align:left; font-size:11px; color:#8fa898; font-weight:700; padding:3px 6px; border-bottom:1px solid #45624f; }
   .hog td { padding:4px 6px; border-bottom:1px solid #1e2c24; font-weight:400; } .hog td.n { text-align:right; font-weight:700; } .hog th.n { text-align:right; }
@@ -578,16 +579,17 @@
     let h = '<table class="hog"><tr><th></th><th>Name</th><th class="n">Tiles</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
     for (const e of j.top) h += '<tr class="' + (e.me ? 'me ' : '') + (e.rank <= 3 ? 'top' + e.rank : '') + '"><td class="rk">#' + e.rank + '</td><td>' + esc(e.name) + '</td><td class="n">' + e.tiles + '</td><td class="n">' + e.level + '</td><td class="n">' + e.gold + '</td><td class="n">' + e.gems + '</td></tr>';
     h += '</table>';
-    if (j.mine && !j.top.some(e => e.me)) h += '<div class="note">Your best: #' + j.mine.rank + ' of ' + j.players + ' (' + j.mine.tiles + ' tiles, level ' + j.mine.level + ')</div>';
-    else h += '<div class="note">' + j.players + ' explorer' + (j.players === 1 ? '' : 's') + ' in the Hall. Ranked by tiles, then level, then gold.</div>';
+    const total = j.runs !== undefined ? j.runs : j.players, who = j.runs !== undefined ? ' run' + (total === 1 ? '' : 's') + ' by ' + j.players + ' explorer' + (j.players === 1 ? '' : 's') : ' explorer' + (total === 1 ? '' : 's');
+    if (j.mine && !j.top.some(e => e.me)) h += '<div class="note">Your best: #' + j.mine.rank + ' of ' + total + ' (' + j.mine.tiles + ' tiles, level ' + j.mine.level + ')</div>';
+    else h += '<div class="note">' + total + who + ' from players everywhere. Ranked by tiles, then level, then gold. Your runs are highlighted.</div>';
     return h;
   }
   function loadBoard(el) {
     el.innerHTML = '<div class="note">Loading the Hall of Greats...</div>';
-    rpc('hx_board', { p_player: PID }).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
+    rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 34;
+  const BUILD = 35;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1203,7 +1205,7 @@
     if (!t) return { why: 'Pick a revealed tile' };
     if (hd(t.q - guy.q, t.r - guy.r) > spellRange()) return { why: 'Too far away (range ' + spellRange() + ')' };
     const m = monAt(t.q, t.r);
-    if (m) { if (m.boss) return { why: m.name + ' shrugs off spells cast from afar. You must face it!' }; if (k !== 'heal') return { fn: () => spellHitMon(k, m), mon: true }; }
+    if (m) { if (m.boss) return { why: m.name + ' shrugs off spells cast from afar. You must face it!' }; if (k !== 'heal') { if (atShrine()) return { why: 'You cannot cast attack magic from a shrine' }; return { fn: () => spellHitMon(k, m), mon: true }; } }
     if (k === 'fire') {
       if (t.type === 'ice') return { fn: () => meltIce(t, 'Your Fireball') };
       if (t.type === 'brazier' && !t.lit && S.boss) return { fn: () => lightBrazier(t, 'Your Fireball') };
@@ -2812,6 +2814,9 @@
     if (nebula) { G.globalAlpha = .9; drawHi(nebula, -30, -20, nebula.uw * .55, nebula.uh * .55); G.globalAlpha = 1; }
     for (let i = 0; i < 50; i++) { const tw = .5 + .5 * Math.sin(gt * (1 + hash(i) * 2) + i); bdot(hash(i * 3.1) * BW, hash(i * 7.7) * BH * .75, hash(i) < .1 ? .45 : .25, '#e8f0ff', .3 + .6 * tw); }
     const m = B.m, boss = !!m.boss, tl = B.tile || curTile(), pk = tl ? palKey(tl) : 'grass';
+    const L0 = monLP(m, boss ? 2.5 : 2, true), yb = 76, topRaw = 58 + 2 - 5 - L0.ph - (boss ? 17 : m.elite ? 4 : 2), rightRaw = 118 + L0.pw * .55;
+    const cam = clamp(Math.min(1, (yb - 7) / Math.max(1, yb - topRaw), 74 / Math.max(1, rightRaw - 80)), .5, 1);
+    G.save(); G.translate(BW / 2, yb); G.scale(cam, cam); G.translate(-BW / 2, -yb);
     const tex = texNow('BT|' + pk, (mm) => lpTile(pk, 1, 0, mm), bM);
     const lunge = (who) => B.lunge && B.lunge.who === who && gt - B.lunge.t < .32 ? Math.sin((gt - B.lunge.t) / .32 * Math.PI) * 26 : 0;
     const shk = (t) => gt - t < .3 ? Math.sin(gt * 70) * 1.6 : 0;
@@ -2867,10 +2872,13 @@
     B.fx = B.fx.filter(f => gt - f.t < 1);
     for (const f of B.fx) { const p = gt - f.t, x = (f.who === 'p' ? hx : mx) + f.dx, y = (f.who === 'p' ? hy - 46 : Math.max(16, mtop + 2)) - p * 14 - Math.sin(Math.min(1, p * 4) * Math.PI) * 3;
       G.globalAlpha = p > .75 ? (1 - p) * 4 : 1; text(f.txt, x, y, f.col, p < .1 ? 2.4 - p * 4 : 2); G.globalAlpha = 1; }
+    G.save(); G.setTransform(k, 0, 0, k, 0, 0);
     if (boss && B.result !== 'win') text('BOSS', 80, 3, Math.floor(gt * 2) % 2 ? '#ff4a4a' : '#ffffff', 1.6);
+    if (B.result === 'win') { bglow(80, 10, 40, '#ffe14a', .25); text('VICTORY', 80, 4, '#ffe14a', 2.2); }
+    G.restore();
     if (B.hard > 0) text('STONE', mx, my + 4, '#c0c8d0', 1.2);
     if (B.poison > 0) text('POISON', hx, hy + 4, '#a0ff60', 1.2);
-    if (B.result === 'win') { bglow(80, 10, 40, '#ffe14a', .25); text('VICTORY', 80, 4, '#ffe14a', 2.2); }
+    G.restore();
     G = prev;
   }
 
@@ -3378,7 +3386,7 @@
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
-    openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
+    openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
 </script>
