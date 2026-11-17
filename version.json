@@ -1,1 +1,1 @@
-{ "build": 35, "notes": "Boss battles now fit on screen, attack magic cannot be cast from a shrine, and the Hall of Greats lists every run from every player." }
+{ "build": 36, "notes": "Sigils now awaken when their own warden falls, even from a spell cast at a distance, and a sigil whose warden is gone can be awakened by stepping on it." }

@@ -589,7 +589,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 35;
+  const BUILD = 36;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -734,7 +734,7 @@
       case 'vault': t.type = type; if (!S.keyDue) S.vaultAt = S.revealed; S.keyDue = true; break;
       case 'lair': t.type = 'lair'; setupBoss(t, d); break;
       case 'brazier': t.type = 'brazier'; break;
-      case 'sigil': { t.type = 'sigil'; const w = makeMonster(d, { lv: 1 }); w.name = 'Warden ' + w.base.n; w.warden = true; w.roam = false; w.elite = false; placeMon(w, q, r); } break;
+      case 'sigil': { t.type = 'sigil'; const w = makeMonster(d, { lv: 1 }); w.name = 'Warden ' + w.base.n; w.warden = true; w.sigil = key(q, r); w.roam = false; w.elite = false; placeMon(w, q, r); } break;
       case 'bear': t.type = type; addDue(['river']); break;
       case 'chasm': t.type = type; addDue(['tree', 'tree']); break;
       case 'ice': t.type = type; addDue(['tree']); break;
@@ -1037,6 +1037,7 @@
       }
     }
     if (t.type === 'cliffup' && !t.lookout) lookout(t);
+    if (sigilReady(t)) awakenSigil(t);
     if (t.type === 'spring') { if (springHurt()) askSpring(t); else toast(t.dry && gt < t.dry ? 'The spring is still trickling back. Give it a moment' : 'A healing spring. Come back when you are hurt'); }
     if (t.type === 'bones') { t.type = 'bonesdone'; const g = ri(3, 9) + Math.floor(curD() / 8); P.gold += gm(g); stats.gold += g; t.loot.push(randItem(curD())); if (rnd() < .3) t.loot.push(makeGear(curD())); toast('You search the remains of a lost explorer (+' + g + ' gold)'); }
     if (t.type === 'lair' && S.boss && !S.boss.open) toast(S.boss.m.name + ' slumbers behind the seal. ' + gateText());
@@ -1080,6 +1081,7 @@
         for (const k in o) for (let n = 0; n < o[k]; n++) P.bag.splice(P.bag.indexOf(k), 1);
         S.boss.have = 1; openLair(); } });
     }
+    if (sigilReady(t)) A.push({ label: 'Awaken the sigil', sub: 'its warden is gone', better: true, run() { awakenSigil(t); } });
     if (t.type === 'spring') { const dry = t.dry && gt < t.dry; A.push({ label: 'Drink from the spring', sub: dry ? 'trickling back: ' + Math.ceil(t.dry - gt) + 's' : 'full health and magic, then it refills slowly', better: !dry && springHurt(), off: dry ? 'The spring is still trickling back' : !springHurt() && 'You are already at full strength', run() { drinkSpring(t); } }); }
     if (t.type === 'cavelit') A.push({ label: 'Enter the cave', sub: 'a temporary underground world', hot: true, run() { enterCave(t); } });
     if (t.type === 'caveexit') A.push({ label: 'Leave the cave', sub: (S.cave && S.cave.guard && S.cave.guard.hp > 0 && mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'the guardian still lurks! ' : '') + 'the cave collapses behind you', hot: true, run() { exitCave(); } });
@@ -1225,6 +1227,7 @@
     if (k === 'drain') { const h = Math.round(d * .6); P.hp = Math.min(maxHP(), P.hp + h); wtxt.push({ x: guy.x, y: guy.y - 26, txt: '+' + h, col: '#7dff8f', t: gt }); }
     if (m.hp <= 0) { if (B) { m.hp = 1; return; } startBattle(m, 'map'); B.log = [m.name + ' falls to your ' + SPELLS[k].name + '!']; winBattle(); return; }
     if (k === 'frost') { m.cool = gt + 15; m.iced = gt + 15; toast(m.name + ' is frozen in place for a while'); }
+    else if (m.warden) { toast(m.name + ' is hurt but guards its sigil'); }
     else { m.roam = true; m.cool = 0; toast(m.name + ' is hurt and comes after you!'); }
   }
   function castHeal() {
@@ -1513,6 +1516,14 @@
     if (P.hp <= 0) { B.result = 'dead'; B.turn = 'done'; blog('You have fallen...'); saveNow(); if (TEST) closeBattle(); else renderBattle(); return; }
     B.turn = 'player'; renderBattle(); saveNow();
   }
+  // a sigil awakens when the warden that spawned from it falls, wherever that happens (a spell from afar counts)
+  function awakenSigil(t) {
+    if (!t || t.type !== 'sigil' || t.lit || !S.boss || S.boss.open) return;
+    t.lit = true; S.boss.have++; if (B) blog('The sigil stone awakens! (' + S.boss.have + '/3)'); toast('The sigil stone awakens! (' + S.boss.have + '/3)');
+    if (S.boss.have >= 3) later(openLair, 900);
+  }
+  const sigilWarden = (t) => [...mons.values()].some(w => w.warden && (w.sigil ? w.sigil === key(t.q, t.r) : (w.q === t.q && w.r === t.r)));
+  const sigilReady = (t) => t.type === 'sigil' && !t.lit && S.boss && !S.boss.open && !sigilWarden(t);
   function winBattle() {
     const m = B.m, t = tiles.get(key(m.q, m.r)), d = curD();
     mons.delete(key(m.q, m.r)); stats.kills++; if (m.elite) stats.elites++;
@@ -1527,7 +1538,7 @@
     if (S.keyDue && rnd() < (m.boss || m.guardian ? 1 : m.base.d >= 90 ? .6 : m.elite ? .45 : 0)) { S.keyDue = false; t.loot.push({ kind: 'item', id: 'key' }); blog('A powerful foe like this guarded an old key!'); }
     if (m.mist && S.boss && !S.boss.open) { const b = S.boss, o = b.offer || {}, pool = b.gate === 'braziers' ? ['wood', 'flint'] : b.gate === 'wardens' ? ['hpot', 'meat'] : Object.keys(o).map(k => ({ cooked: 'fish', torch: pick(['wood', 'flint']), bomb: pick(['flint', 'iron', 'stone']), rope: 'vine' })[k] || k);
       t.loot.push({ kind: 'item', id: pick(pool) }); if (rnd() < .5) t.loot.push({ kind: 'item', id: pick(pool) }); blog('The mist creature leaves something behind.'); }
-    if (m.warden && S.boss && t.type === 'sigil' && !t.lit) { t.lit = true; S.boss.have++; blog('The sigil stone awakens! (' + S.boss.have + '/3)'); if (S.boss.have >= 3) later(openLair, 900); }
+    if (m.warden && S.boss) { const sg = m.sigil ? tiles.get(m.sigil) : (t.type === 'sigil' ? t : null); if (sg && sg.type === 'sigil') awakenSigil(sg); }
     if (m.guardian) {
       stats.guardians++; t.type = 'dendone'; const n = ri(2, 4) + sk('gems'); later(() => addGems(n, 'The guardian\'s hoard!'), 700);
       t.loot.push(makeGear(d, 2)); t.loot.push({ kind: 'item', id: pick(['hpot', 'mpot', 'crystal']) }); P.gold += gm(m.gold); stats.gold += m.gold;
@@ -3386,7 +3397,7 @@
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
-    openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
+    openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
 </script>
