@@ -1016,7 +1016,7 @@
     guy.target = null; guy.pending = null; springOpen = true;
     const hurt = springHurt();
     $('springBox').innerHTML = '<h2 style="color:#7adcff">A HEALING SPRING</h2><div style="font-size:42px;margin:4px 0">&#128167;</div>' +
-      '<div class="note" style="margin:6px 0 12px">Clear water bubbles up from the rock. Drinking restores all your health and magic' + (hurt ? '.' : ' (you do not need it right now).') + '<br>It refills a few minutes after each drink, so you can always come back.</div>' +
+      '<div class="note" style="margin:6px 0 12px">Clear water bubbles up from the rock. Drinking restores all your health and magic' + (hurt ? '.' : ' (you do not need it right now).') + '<br>It can only be drunk from once, so a spring you pass up now is still there if you come back hurt.</div>' +
       '<div style="display:flex;gap:10px;justify-content:center"><button class="act' + (hurt ? '' : ' off') + '" id="spYes">Drink now</button><button class="act" id="spNo">Not now</button></div>';
     $('springAsk').style.display = 'flex';
     $('spYes').onclick = () => { if (!hurt) { toast('You are already at full strength. Save it for later'); return; } drinkSpring(t); closeSpring(); };
