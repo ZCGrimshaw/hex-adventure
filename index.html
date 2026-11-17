@@ -191,6 +191,7 @@
 <div id="awaken" class="modal"></div>
 <div id="gmenu" class="modal"><div class="bx" id="menuBox" style="width:min(760px,96vw)"></div></div>
 <div id="spellbook" class="modal"><div class="bx" id="bookBox" style="width:min(560px,95vw)"></div></div>
+<div id="nameAsk" class="modal"><div class="bx" id="nameBox" style="width:min(430px,94vw);text-align:center;border-color:#ffd23a"></div></div>
 <div id="bookAsk" class="modal"><div class="bx" id="bookAskBox" style="width:min(460px,94vw);text-align:center;border-color:#c8a8ff"></div></div>
 <div id="springAsk" class="modal"><div class="bx" id="springBox" style="width:min(420px,94vw);text-align:center;border-color:#5ad0ff"></div></div>
 <div id="shop" class="modal"><div class="bx" id="shopBox" style="width:min(940px,96vw);border-color:#ffd23a"></div></div>
@@ -589,7 +590,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 36;
+  const BUILD = 37;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1571,6 +1572,7 @@
     if (S.deaths >= 5) return gameOver();
     guy.q = S.cp.q; guy.r = S.cp.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null;
     P.hp = maxHP(); P.mp = maxMP(); flash = 1; cam.x = w.x; cam.y = w.y - 6; later(saveNow, 50);
+    if (!TEST && pname.length < 2) later(() => askName(() => {}), 1200);
     toast((inCave ? 'The cave collapsed. Your gear and lost XP wait at its entrance. ' : 'You wake at the checkpoint. Your gear lies where you fell, your stash is safe. ') + '(' + (5 - S.deaths) + ' lives left)'); hudDirty = true;
   }
   function saveRun() {
@@ -1581,7 +1583,23 @@
     if (S.gems > bestGems) { bestGems = S.gems; try { localStorage.setItem('hexworld_g3_gems', String(bestGems)); } catch (e) {} }
     return { lb, me };
   }
+  // the first time you fall, you choose your forever name (it goes on the Hall of Greats); asked once, kept for every run
+  function askName(done) {
+    if (TEST || pname.length >= 2) { done(); return; }
+    guy.target = null; guy.pending = null; springOpen = true;
+    $('nameBox').innerHTML = '<h2 style="color:#ffd23a">CHOOSE YOUR NAME</h2><div style="font-size:38px;margin:2px 0">&#9876;</div>' +
+      '<div class="note" style="margin:4px 0 10px">Every explorer who falls must be remembered. Choose the name you will carry forever. It appears in the Hall of Greats for all players to see.</div>' +
+      '<div class="namerow"><input id="fnName" maxlength="14" placeholder="Your forever name" autocomplete="off"><button class="act buy" id="fnGo">This is my name</button></div><div id="fnMsg" class="note" style="min-height:16px"></div>';
+    $('nameAsk').style.display = 'flex';
+    const go = () => { const nm = ($('fnName').value || '').trim();
+      if (nm.length < 2) { $('fnMsg').textContent = 'Use 2 to 14 characters'; return; }
+      pname = nm; try { localStorage.setItem('hexworld_name', nm); } catch (e) {}
+      $('nameAsk').style.display = 'none'; springOpen = false; hudDirty = true; done(); };
+    $('fnGo').onclick = go; $('fnName').onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') go(); };
+    setTimeout(() => { try { $('fnName').focus(); } catch (e) {} }, 60);
+  }
   function gameOver(status) {
+    if (S.state === 'play' && !TEST && pname.length < 2) { askName(() => gameOver(status)); return; }
     S.state = 'over'; deleteSave();
     const run = saveRun();
     const isBest = S.revealed > best; if (isBest) { best = S.revealed; try { localStorage.setItem('hexworld_g3_best', String(best)); } catch (e) {} }
@@ -3397,7 +3415,7 @@
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, craft, craftCheck, RECIPES, bagUsed,
-    openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
+    openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
 </script>
