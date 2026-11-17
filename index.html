@@ -147,6 +147,8 @@
   #lvlBanner div { font-size:18px; color:#fff2c8; margin-top:2px; }
   #lvlBanner.go { animation:lvlpop 3.2s ease-out forwards; }
   @keyframes lvlpop { 0% { opacity:0; transform:scale(.6); } 8% { opacity:1; transform:scale(1.12); } 14% { transform:scale(1); } 80% { opacity:1; } 100% { opacity:0; transform:translateY(-12px); } }
+  body.warping .ui:not(#warpBar):not(#tip):not(#lvlBanner):not(#htip) { visibility:hidden; }
+  #warpBar { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:30; display:none; align-items:center; gap:12px; background:#0a1a24ee; border:2px solid #5ad0ff; border-radius:8px; padding:8px 14px; font-size:15px; color:#d8f4ff; box-shadow:0 0 18px #5ad0ff55; }
   #htip { position:fixed; z-index:99; pointer-events:none; display:none; max-width:320px; background:#0a120def; border:1px solid #7dff8f; border-radius:6px; padding:7px 11px; font-size:13px; line-height:1.4; color:#e8f6ec; box-shadow:0 4px 14px #000a; }
   #toast { font-size:18px; } #tip { font-size:14px; }
   .act { font-size:14px; }
@@ -203,7 +205,7 @@
 <div id="nameAsk" class="modal"><div class="bx" id="nameBox" style="width:min(430px,94vw);text-align:center;border-color:#ffd23a"></div></div>
 <div id="bookAsk" class="modal"><div class="bx" id="bookAskBox" style="width:min(460px,94vw);text-align:center;border-color:#c8a8ff"></div></div>
 <div id="springAsk" class="modal"><div class="bx" id="springBox" style="width:min(420px,94vw);text-align:center;border-color:#5ad0ff"></div></div>
-<div id="warp" class="modal"><div class="bx" id="warpBox" style="width:min(520px,95vw);border-color:#5ad0ff"></div></div>
+<div id="warpBar" class="ui"><span>Choose a shrine to warp to <b>(costs 1 crystal)</b></span><button class="act" id="warpCancel">Cancel</button></div>
 <div id="shop" class="modal"><div class="bx" id="shopBox" style="width:min(940px,96vw);border-color:#ffd23a"></div></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
@@ -600,7 +602,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 42;
+  const BUILD = 44;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1115,7 +1117,7 @@
         else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
         else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
         if (pet) pet.hp = pet.max; hudDirty = true; later(spawnMist, 1200); } }); }
-    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { openWarp(); } }); }
+    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
@@ -2752,9 +2754,11 @@
 
     let hoverT = null, hoverC = null;
     const busy = B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || shopOpen || hallOpen || springOpen;
+    if (warpMode && (B || S.state !== 'play' || S.cave || !atShrine() || guy.mv || !countOf('crystal', true))) endWarp();
+    if (warpMode) sel = null;
     if (sel && (S.state !== 'play' || busy || !(tiles.has(key(sel.q, sel.r)) || isCand(sel.q, sel.r)))) sel = null;
     const hcell = sel || (mouse.x > -900 ? cellAtMouse() : null);
-    if (S.state === 'play' && !busy && hcell) { const c = hcell, k = key(c.q, c.r); if (tiles.has(k)) hoverT = tiles.get(k); else if (isCand(c.q, c.r)) hoverC = c; }
+    if (S.state === 'play' && !busy && !warpMode && hcell) { const c = hcell, k = key(c.q, c.r); if (tiles.has(k)) hoverT = tiles.get(k); else if (isCand(c.q, c.r)) hoverC = c; }
     canvas.style.cursor = aim ? 'crosshair' : hoverT || hoverC ? 'pointer' : 'default';
     if (hoverT) {
       const m = monAt(hoverT.q, hoverT.r); let s = TIPS[hoverT.type] || '';
@@ -2768,14 +2772,15 @@
       if (aim) { const u = spellUse(aim, hoverT); s = u.fn ? 'Cast ' + SPELLS[aim].name + ' here' + (sel ? ' · tap again to confirm' : '') : u.why; }
       else if (sel) s += ' · tap again to go';
       setTip(s);
-    } else if (aim) setTip('Choose a highlighted target for ' + SPELLS[aim].name + ' (Esc to cancel)');
+    } else if (warpMode) { const c = mouse.x > -900 ? cellAtMouse() : null, e = c && warpMode.list.find(x => x.t.q === c.q && x.t.r === c.r); setTip(e ? 'Click to warp here · ' + e.d + ' tiles away' : 'Choose a glowing shrine (Esc to cancel)'); }
+    else if (aim) setTip('Choose a highlighted target for ' + SPELLS[aim].name + ' (Esc to cancel)');
     else if (hoverC) setTip(mistCap() ? 'Dark mist: defeat ' + S.boss.m.name + ' to explore further' : hd(hoverC.q - guy.q, hoverC.r - guy.r) === 1 ? (sel ? 'Tap again to reveal' : 'Click to reveal') : (sel ? 'Tap again to walk there and reveal' : 'Click to walk there and reveal')); else setTip('');
 
     const list = [];
     for (const t of tiles.values()) { const w = toWorld(t.q, t.r), sx = w.x + ox, sy = w.y + oy; if (sx < -50 || sx > W + 50 || sy < -60 || sy > H + 70) continue; list.push({ t, w, y: w.y }); }
     for (const m of mons.values()) { const sx = m.x + ox, sy = m.y + oy; if (sx < -60 || sx > W + 60 || sy < -80 || sy > H + 80) continue; list.push({ m, y: m.y + .3 }); }
     list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 });
-    if (S.state === 'play' && !guy.mv && !caveFull()) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); }
+    if (S.state === 'play' && !guy.mv && !caveFull() && !warpMode) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); }
     if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
     list.sort((a, b) => a.y - b.y);
     for (const it of list) {
@@ -2794,6 +2799,15 @@
         G.globalAlpha = 1;
         if (hoverT === t) outlineHex(cx, cy - elev(t), monAt(t.q, t.r) ? '#ff5a4a' : blocked(t) ? '#ff9a3a' : '#ffe14a');
         if (S.cp === t && t !== ct) glow(cx, cy, 34, '#5ad0ff', .12); }
+    }
+    if (warpMode) {
+      G.save(); G.textBaseline = 'alphabetic';
+      const pul = Math.sin(gt * 6) > 0, hc = mouse.x > -900 ? cellAtMouse() : null, fs = 12 / scale;
+      for (const e of warpMode.list) { const w = toWorld(e.t.q, e.t.r), cx = Math.round(w.x) + ox, cy = Math.round(w.y) + oy - elev(e.t), hv = hc && hc.q === e.t.q && hc.r === e.t.r, k = (hv ? 1.5 : 1) * Math.max(1, 1 / scale);
+        outlineHex(cx, cy, hv || pul ? '#ffffff' : '#5ad0ff', hv ? 'rgba(90,208,255,0.4)' : 'rgba(90,208,255,0.2)'); glow(cx, cy, 46 * k, '#5ad0ff', hv ? .6 : .4);
+        const bh = 70 * Math.max(1, .8 / scale); G.fillStyle = hv ? '#ffffffcc' : '#8ae8ffaa'; G.fillRect(cx - .6 * k, cy - bh, 1.2 * k, bh);
+        G.font = 'bold ' + fs + 'px Verdana'; G.textAlign = 'center'; G.lineWidth = fs * .22; G.strokeStyle = '#04101a'; G.strokeText(e.d + ' tiles', cx, cy - bh - fs * .4); G.fillStyle = '#e8fbff'; G.fillText(e.d + ' tiles', cx, cy - bh - fs * .4); }
+      const gx = Math.round(guy.x) + ox, gy = Math.round(guy.y) + oy; G.font = 'bold ' + fs + 'px Verdana'; G.textAlign = 'center'; G.lineWidth = fs * .22; G.strokeStyle = '#04101a'; G.strokeText('YOU ARE HERE', gx, gy - 30 / scale); G.fillStyle = '#ffe14a'; G.fillText('YOU ARE HERE', gx, gy - 30 / scale); G.restore();
     }
     if (aim && S.state === 'play' && !busy) {
       const pul = Math.sin(gt * 6) > 0;
@@ -3021,7 +3035,7 @@
     g.fillStyle = '#8fa898'; g.font = 'bold 10px Verdana'; g.fillText(S.cave ? 'CAVE' : 'MAP', 5, 12);
   }
   if (!TEST) {
-    $('actions').onclick = (e) => { const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
+    $('actions').onclick = (e) => { if (warpMode) return; const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
     $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); else if (e.target.closest('#menuBtn')) openMenu();
@@ -3213,7 +3227,35 @@
      boss:      { bpm: 158, scale: [0,1,4,5,7,8,10],   prog: [[0,1,0,5],[0,5,1,0],[0,3,1,0]],           lead: .75, arp: 1, drums: 'heavy', bass: 'sixteenth', pad: 0, bell: 0, oct: 1 }
     };
     function mzRng(s) { s >>>= 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+    function mzFanfare(scene, seed) {
+      const T = [0, 2, 5, 7][seed % 4], big = scene === 'victory', ROWS = 16, bpm = big ? 128 : 150, pats = [];
+      const row = (m) => { const r = new Array(ROWS).fill(0); for (const k in m) r[k] = m[k] + T; return r; };
+      const bars = big ? [
+        { lead: { 0: 12, 2: 16, 4: 19, 6: 24, 8: 28, 10: 31, 12: 36 }, bass: 0, ch: [0, 4, 7], drum: 'a' },
+        { lead: { 0: 36, 4: 34, 6: 36, 8: 31, 12: 28 }, bass: 5, ch: [5, 9, 12], drum: 'a' },
+        { lead: { 0: 33, 2: 36, 4: 38, 6: 40, 8: 36, 12: 38 }, bass: 7, ch: [7, 11, 14], drum: 'r' },
+        { lead: { 0: 36, 8: 31 }, bass: 0, ch: [0, 4, 7], drum: 'e', bells: { 0: 24, 2: 28, 4: 31, 6: 36, 8: 31, 10: 36, 12: 40 } }
+      ] : [
+        { lead: { 0: 12, 2: 16, 4: 19, 6: 24, 8: 19, 10: 24, 12: 28 }, bass: 0, ch: [0, 4, 7], drum: 'a' },
+        { lead: { 0: 31, 6: 28, 8: 31 }, bass: 0, ch: [0, 4, 7], drum: 'e', bells: { 0: 24, 2: 28, 4: 31, 6: 36 } }
+      ];
+      bars.forEach((b) => {
+        const lead = row(b.lead), bass = new Array(ROWS).fill(0), arp = new Array(ROWS).fill(0), pad = new Array(ROWS).fill(0), pad2 = new Array(ROWS).fill(0), bell = row(b.bells || {});
+        bass[0] = 12 + b.bass + T; if (b.drum !== 'e') bass[8] = bass[0];
+        for (let i = 0; i < ROWS; i += 2) arp[i] = 24 + b.ch[(i / 2) % 3] + T;
+        pad[0] = 24 + b.ch[0] + T; pad2[0] = 24 + b.ch[1] + T;
+        const k = new Array(ROWS).fill(0), sn = new Array(ROWS).fill(0), h = new Array(ROWS).fill(0);
+        if (b.drum === 'a') { k[0] = k[8] = 12; sn[4] = sn[12] = 12; for (let i = 0; i < ROWS; i += 2) h[i] = 12.4; }
+        else if (b.drum === 'r') { k[0] = k[8] = 12; for (const i of [8, 10, 12, 13, 14, 15]) sn[i] = 12; for (let i = 0; i < ROWS; i += 2) h[i] = 12.4; }
+        else { k[0] = 12; sn[0] = 12; h[0] = 12; }
+        const ch = [[0, -.2, ...lead], [1, 0, ...bass], [2, .35, ...arp], [3, -.4, ...pad], [3, .4, ...pad2], [4, 0, ...k], [5, 0, ...sn], [6, .15, ...h]];
+        if (b.bells) ch.push([7, .5, ...bell]);
+        pats.push(ch);
+      });
+      return [MZ_INST, pats, pats.map((_, i) => i), bpm];
+    }
     function mzCompose(scene, seed) {
+      if (scene === 'win' || scene === 'victory') return mzFanfare(scene, seed);
       const S = MZ_SCENES[scene] || MZ_SCENES.adventure, R = mzRng(seed * 7919 + scene.length * 131), N = S.scale.length;
       const deg = (d) => S.scale[((d % N) + N) % N] + 12 * Math.floor(d / N);
       const prog = S.prog[Math.floor(R() * S.prog.length)];
@@ -3274,13 +3316,13 @@
     return { run };
   }
   const Mus = { on: true, vol: .6, ctx: null, master: null, cur: null, bank: {}, pend: {}, w: null, wFail: false, lib: null, started: false };
-  const MUS_NAMES = { adventure: 'Adventure', shop: 'Shop', cave: 'Cave', battle: 'Battle', boss: 'Boss battle' };
+  const MUS_NAMES = { win: 'Victory!', victory: 'Boss victory!', adventure: 'Adventure', shop: 'Shop', cave: 'Cave', battle: 'Battle', boss: 'Boss battle' };
   try { if (localStorage.getItem('hexmusic') === '0') Mus.on = false; const v = parseFloat(localStorage.getItem('hexmusicvol')); if (v >= 0 && v <= 1) Mus.vol = v; } catch (e) {}
   const musSave = () => { try { localStorage.setItem('hexmusic', Mus.on ? '1' : '0'); localStorage.setItem('hexmusicvol', String(Mus.vol)); } catch (e) {} };
   const musGain = () => Mus.on ? Mus.vol * Mus.vol * 1.8 : 0;
   function musWant() {
     if (!S) return 'adventure';
-    if (B && B.m) return (B.m.boss || B.m.warden) ? 'boss' : 'battle';
+    if (B && B.m) { if (B.result === 'win') return Mus.winB === B ? 'adventure' : (B.m.boss ? 'victory' : 'win'); return (B.m.boss || B.m.warden) ? 'boss' : 'battle'; }
     if (shopOpen) return 'shop';
     return S.cave ? 'cave' : 'adventure';
   }
@@ -3314,7 +3356,7 @@
     const bank = Mus.bank[scene]; if (!bank || !bank.length) { musGen(scene); return false; }
     const ctx = Mus.ctx, buf = bank.shift(), g = ctx.createGain(), src = ctx.createBufferSource(), t = ctx.currentTime;
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(1, t + .5); src.buffer = buf; src.connect(g); g.connect(Mus.master); src.start();
-    const me = { scene, src, g }; src.onended = () => { if (Mus.cur === me) { Mus.cur = null; musTick(); } };
+    const me = { scene, src, g, once: scene === 'win' || scene === 'victory' }; src.onended = () => { if (Mus.cur === me) { Mus.cur = null; musTick(); } };
     if (Mus.cur) musFade(Mus.cur); Mus.cur = me;
     if (!bank.length) musGen(scene);
     return true;
@@ -3322,12 +3364,14 @@
   function musTick() {
     const ctx = Mus.ctx; if (TEST || !ctx || !Mus.on || ctx.state !== 'running') return;
     const want = musWant(); if (Mus.cur && Mus.cur.scene === want) return;
+    if (Mus.cur && Mus.cur.once && ['adventure', 'shop', 'cave'].includes(want)) return;   // let a victory fanfare finish
     if (!musPlay(want)) return;
+    if (want === 'win' || want === 'victory') Mus.winB = B;
   }
   // after the current song is going, quietly pre-render the other scenes (one at a time) so changes are instant
   function musPrefetch() {
     if (!Mus.ctx || !Mus.cur || Object.values(Mus.pend).some(Boolean)) return;
-    for (const sc of ['battle', 'shop', 'cave', 'boss', 'adventure']) if (!(Mus.bank[sc] && Mus.bank[sc].length)) { musGen(sc); return; }
+    for (const sc of ['battle', 'shop', 'cave', 'boss', 'adventure', 'win', 'victory']) if (!(Mus.bank[sc] && Mus.bank[sc].length)) { musGen(sc); return; }
   }
   function musApply() {
     if (!Mus.ctx) return; Mus.master.gain.setTargetAtTime(musGain(), Mus.ctx.currentTime, .05);
@@ -3507,28 +3551,30 @@
     el.style.display = 'flex'; awakenT = performance.now(); flash = 1;
     el.onclick = () => { if (performance.now() - awakenT > 1500) { el.style.display = 'none'; hudDirty = true; toast('You are awakened! A fresh skill tree awaits (press K)'); } };
   }
-  // ---------- shrine warping ----------
-  let warpOpen = false;
+  // ---------- shrine warping: the map zooms out, reachable shrines glow, click one to go (Esc, right-click or Cancel to stay) ----------
+  let warpMode = null, warpScale = null;
   const shrineList = () => { if (S.cave) return []; const out = []; for (const t of tiles.values()) if (t.type === 'shrine' && !(t.q === guy.q && t.r === guy.r)) out.push({ t, d: hd(t.q - guy.q, t.r - guy.r) }); return out.sort((a, b) => a.d - b.d); };
-  function openWarp() { if (TEST || B || !atShrine()) return; warpOpen = true; $('warp').style.display = 'flex'; renderWarp(); }
-  function closeWarp() { warpOpen = false; $('warp').style.display = 'none'; hudDirty = true; }
-  function renderWarp() {
-    if (TEST || !warpOpen) return; const cr = countOf('crystal', true), list = shrineList();
-    let h = '<h2>SHRINE WARP</h2><div class="note" style="margin:0 0 8px">Spend 1 crystal (bag or stash) to step through to a shrine you have already found. You have ' + cr + '.</div>';
-    list.forEach((e, i) => { h += '<div class="rec"><span class="grow"><b>' + (e.t.q === 0 && e.t.r === 0 ? 'Starting shrine' : 'Shrine') + '</b><br>' + e.d + ' tile' + (e.d === 1 ? '' : 's') + ' away' + (S.cp === e.t ? ' · your checkpoint' : '') + '</span><button class="act' + (cr ? ' buy' : ' off') + '" data-w="' + i + '">Warp<small>' + (cr ? '1 crystal' : 'no crystal') + '</small></button></div>'; });
-    if (!list.length) h += '<div class="note">No other shrines yet.</div>';
-    h += '<div style="text-align:center;margin-top:8px"><button class="act" id="wpClose">Close</button></div>';
-    $('warpBox').innerHTML = h;
+  function startWarp() {
+    if (TEST || B || warpMode || !atShrine()) return; const list = shrineList(); if (!list.length || !countOf('crystal', true)) return;
+    let x0 = guy.x, x1 = guy.x, y0 = guy.y, y1 = guy.y;
+    for (const e of list) { const w = toWorld(e.t.q, e.t.r); x0 = Math.min(x0, w.x); x1 = Math.max(x1, w.x); y0 = Math.min(y0, w.y); y1 = Math.max(y1, w.y); }
+    const bw = x1 - x0 + 90, bh = y1 - y0 + 110;
+    warpScale = clamp(Math.min(window.innerWidth * .92 / bw, window.innerHeight * .74 / bh, curScale()), .3, 20);
+    warpMode = { list }; sel = null; aim = null; closeAllForWarp();
+    resize(); pan.x = (x0 + x1) / 2 - cam.x; pan.y = (y0 + y1) / 2 - 6 - cam.y;
+    $('warpBar').style.display = 'flex'; document.body.classList.add('warping'); hudDirty = true;
   }
-  function warpTo(i) {
-    const e = shrineList()[i]; if (!e || B || S.cave || !atShrine() || !countOf('crystal', true)) return;
+  function closeAllForWarp() { if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (skillsOpen) closeSkills(); if (bookOpen) closeBook(); if (menuOpen) closeMenu(); }
+  function endWarp() { if (!warpMode) return; warpMode = null; warpScale = null; pan.x = pan.y = 0; $('warpBar').style.display = 'none'; document.body.classList.remove('warping'); resize(); hudDirty = true; }
+  function warpTo(t) {
+    if (!warpMode || B || S.cave || !atShrine() || !countOf('crystal', true) || !tiles.has(key(t.q, t.r))) return endWarp();
     const k = P.bag.indexOf('crystal'); if (k >= 0) P.bag.splice(k, 1); else S.stash.splice(S.stash.indexOf('crystal'), 1);
-    closeWarp(); guy.q = e.t.q; guy.r = e.t.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null; sel = null; aim = null;
+    endWarp(); guy.q = t.q; guy.r = t.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null; sel = null; aim = null;
     if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
     flash = 1; cam.x = w.x; cam.y = w.y - 6; burst(w.x, w.y - 14, 18, ['#5ad0ff', '#ffffff', '#c8b8ff'], 30, -30, 20);
-    toast('The crystal shatters and carries you to the shrine'); onEnter(e.t); hudDirty = true; later(saveNow, 50);
+    toast('The crystal shatters and carries you to the shrine'); onEnter(t); hudDirty = true; later(saveNow, 50);
   }
-  if (!TEST) $('warpBox').onclick = (e) => { if (e.target.closest('#wpClose')) return closeWarp(); const b = e.target.closest('[data-w]'); if (b && !b.classList.contains('off')) warpTo(+b.dataset.w); };
+  if (!TEST) $('warpCancel').onclick = (e) => { e.stopPropagation(); endWarp(); };
   function openSkills() { if (TEST) return; skillsOpen = true; bagSel = null; aim = null; $('skills').style.display = 'flex'; renderSkills(); }
   function closeSkills() { skillsOpen = false; $('skills').style.display = 'none'; hudDirty = true; }
   function renderSkills() {
@@ -3626,7 +3672,7 @@
     const l = ZL.filter(v => v >= lo && v <= hi); if (!l.includes(a)) l.push(a);
     return l.sort((x, y) => x - y);
   }
-  function curScale() { const l = zoomLevels(); if (zoomS == null) return autoScale(); return l.reduce((b, v) => Math.abs(v - zoomS) < Math.abs(b - zoomS) ? v : b, l[0]); }
+  function curScale() { if (warpScale) return warpScale; const l = zoomLevels(); if (zoomS == null) return autoScale(); return l.reduce((b, v) => Math.abs(v - zoomS) < Math.abs(b - zoomS) ? v : b, l[0]); }
   function zoomBy(d) {
     const l = zoomLevels(), i = clamp(l.indexOf(curScale()) + d, 0, l.length - 1); if (l[i] === curScale()) return;
     zoomS = l[i]; try { localStorage.setItem('hexzoom', String(zoomS)); } catch (_) {} resize(); hudDirty = true;
@@ -3647,6 +3693,7 @@
     }
   }
   function tapAt(touch) {
+    if (warpMode) { const c = cellAtMouse(), e = c && warpMode.list.find(x => x.t.q === c.q && x.t.r === c.r); if (e) warpTo(e.t); return; }
     if (S.state !== 'play' || B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || shopOpen || hallOpen || springOpen) { sel = null; return; }
     const c = cellAtMouse();
     sel = null; act(c, !!touch); // one tap is enough, on touch screens too
@@ -3664,7 +3711,7 @@
     if (e.pointerId !== gest.id) return;
     if (!gest.moved && Math.hypot(e.clientX - gest.sx, e.clientY - gest.sy) > (gest.touch ? 10 : 6)) { gest.moved = true; dragLast = { x: gest.sx, y: gest.sy }; }
     if (gest.moved) {
-      pan.x = clamp(pan.x - (e.clientX - dragLast.x) / scale, -400, 400); pan.y = clamp(pan.y - (e.clientY - dragLast.y) / scale, -300, 300);
+      const pl = warpMode ? 6000 : 400; pan.x = clamp(pan.x - (e.clientX - dragLast.x) / scale, -pl, pl); pan.y = clamp(pan.y - (e.clientY - dragLast.y) / scale, -pl * .75, pl * .75);
       dragLast = { x: e.clientX, y: e.clientY };
     }
   });
@@ -3672,7 +3719,7 @@
   canvas.addEventListener('pointerleave', () => { mouse.x = mouse.y = -999; });
   canvas.addEventListener('pointerdown', (e) => {
     setMouse(e);
-    if (e.button === 2) { if (aim && S.state === 'play' && !B) { aim = null; hudDirty = true; return; }
+    if (e.button === 2) { if (warpMode) { endWarp(); return; } if (aim && S.state === 'play' && !B) { aim = null; hudDirty = true; return; }
       if (S.state === 'play' && !B && !TEST) { const c = cellAtMouse(), t = c && tiles.get(key(c.q, c.r)), g = t && t.loot && t.loot.find(x => x.kind === 'gear'); if (g) inspectGear(g, t.loot.filter(x => x.kind === 'gear')); } return; }
     try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -3700,10 +3747,11 @@
     if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen && !bookOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
     if ((e.key === 'c' || e.key === 'C') && !B && S.state === 'play' && !stashOpen && !skillsOpen) { craftOpen ? closeCraft() : openCraft(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key === 'Escape' && warpMode) { endWarp(); return; }
     if (e.key === 'Escape') { if (inspectOpen) closeInspect(); else if (shopOpen) closeShop(); if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
   // left or right click on the dim area outside a window closes it (battle, name, book choice, awaken, game-over and update windows stay open)
-  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), warp: () => warpOpen && closeWarp(), hall: () => hallOpen && closeHall(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
+  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), hall: () => hallOpen && closeHall(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
     let downEl = null; window.addEventListener('mousedown', (e) => { downEl = e.target; }, true);
     const out = (e) => { const el = e.target; if (el && el.classList && el.classList.contains('modal') && OUT[el.id] && (e.type === 'contextmenu' || downEl === el)) { OUT[el.id](); } };
     window.addEventListener('click', out); window.addEventListener('contextmenu', out); }
