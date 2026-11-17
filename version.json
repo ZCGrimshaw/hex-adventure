@@ -1,1 +1,1 @@
-{ "build": 38, "notes": "Adds procedurally generated music (adventure, shop, cave, battle, boss) with options in the menu, and windows now close when you click outside them." }
+{ "build": 39, "notes": "Springs now run dry after one use and no longer refill." }

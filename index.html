@@ -590,7 +590,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 38;
+  const BUILD = 39;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1001,12 +1001,12 @@
     const g = ri(5, 10) + Math.floor(S.revealed / 6); P.gold += gm(g); stats.gold += g; t.loot.push(randItem(S.revealed));
     toast(n ? 'From the clifftop you spot ' + n + ' new tiles! A bird nest holds ' + g + ' gold' : 'A great view, and a bird nest with ' + g + ' gold');
   }
-  // healing spring: found by a ??? tile, asks before use, and can be revisited (it refills after a few minutes)
+  // healing spring: found by a ??? tile, asks before use, and can be revisited (one use only)
   let springOpen = false;
   const springHurt = () => P.hp < maxHP() || P.mp < maxMP() || (pet && pet.hp < pet.max);
   function drinkSpring(t) {
-    if (!t || t.type !== 'spring' || (t.dry && gt < t.dry)) return;
-    P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; t.dry = gt + 240;
+    if (!t || t.type !== 'spring' || t.dry) return;
+    P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; t.dry = 1;
     const w = toWorld(t.q, t.r); burst(w.x, w.y - 8, 22, ['#5ad0ff', '#a0f0ff', '#ffffff'], 50, -35, 28);
     toast('You drink the cool spring water. Fully restored!'); hudDirty = true;
   }
@@ -1039,7 +1039,7 @@
     }
     if (t.type === 'cliffup' && !t.lookout) lookout(t);
     if (sigilReady(t)) awakenSigil(t);
-    if (t.type === 'spring') { if (springHurt()) askSpring(t); else toast(t.dry && gt < t.dry ? 'The spring is still trickling back. Give it a moment' : 'A healing spring. Come back when you are hurt'); }
+    if (t.type === 'spring') { if (!t.dry && springHurt()) askSpring(t); else toast(t.dry ? 'The spring has run dry' : 'A healing spring. Come back when you are hurt'); }
     if (t.type === 'bones') { t.type = 'bonesdone'; const g = ri(3, 9) + Math.floor(curD() / 8); P.gold += gm(g); stats.gold += g; t.loot.push(randItem(curD())); if (rnd() < .3) t.loot.push(makeGear(curD())); toast('You search the remains of a lost explorer (+' + g + ' gold)'); }
     if (t.type === 'lair' && S.boss && !S.boss.open) toast(S.boss.m.name + ' slumbers behind the seal. ' + gateText());
     if (t.type === 'rune') learnSpell(t);
@@ -1083,7 +1083,7 @@
         S.boss.have = 1; openLair(); } });
     }
     if (sigilReady(t)) A.push({ label: 'Awaken the sigil', sub: 'its warden is gone', better: true, run() { awakenSigil(t); } });
-    if (t.type === 'spring') { const dry = t.dry && gt < t.dry; A.push({ label: 'Drink from the spring', sub: dry ? 'trickling back: ' + Math.ceil(t.dry - gt) + 's' : 'full health and magic, then it refills slowly', better: !dry && springHurt(), off: dry ? 'The spring is still trickling back' : !springHurt() && 'You are already at full strength', run() { drinkSpring(t); } }); }
+    if (t.type === 'spring') { const dry = !!t.dry; A.push({ label: 'Drink from the spring', sub: dry ? 'run dry' : 'full health and magic, one use only', better: !dry && springHurt(), off: dry ? 'The spring has run dry' : !springHurt() && 'You are already at full strength', run() { drinkSpring(t); } }); }
     if (t.type === 'cavelit') A.push({ label: 'Enter the cave', sub: 'a temporary underground world', hot: true, run() { enterCave(t); } });
     if (t.type === 'caveexit') A.push({ label: 'Leave the cave', sub: (S.cave && S.cave.guard && S.cave.guard.hp > 0 && mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'the guardian still lurks! ' : '') + 'the cave collapses behind you', hot: true, run() { exitCave(); } });
     if (t.type === 'shrooms') gather('Pick glowcap', t.units + ' left', 'shroom', () => { if (--t.units <= 0) t.type = 'cfloor'; });
@@ -2169,7 +2169,7 @@
         const cc = on ? ['#3ab8ff', '#a0f0ff', '#ffffff'] : t.used ? ['#5a6a8a', '#7a8aa8', '#a0aac0'] : ['#ffaa3a', '#ffe08a', '#ffffff'];
         { const gc = shrineGemLP(on ? 'on' : t.used ? 'used' : 'off'); if (gc) lpFeet(gc, cx - 13, fy + 11); else for (let r = 0; r < 9; r++) { const w = r < 4 ? r : 8 - r; px(cx - 13 - w, fy + r, w * 2 + 1, 1, r < 3 ? cc[2] : r < 6 ? cc[1] : cc[0]); } }
         glow(cx - 13, fy + 4, on ? 30 : 18, on ? '#5ad0ff' : '#ffaa3a', on ? .5 : .25); } break;
-      case 'spring': { const dry = t.dry && gt < t.dry;
+      case 'spring': { const dry = !!t.dry;
         for (let y = -6; y <= 6; y++) { const hw = Math.floor(15 * Math.sqrt(1 - (y / 6.6) * (y / 6.6))), yy = cy + 1 + y;
           px(cx - hw - 1, yy, 2 * hw + 2, 1, y > 2 ? '#4a4a60' : '#9a9aae');
           if (Math.abs(y) <= 5) { const iw = Math.max(1, hw - 2); px(cx - iw, yy, 2 * iw, 1, dry ? (y < 0 ? '#7a6a52' : '#5a4c3a') : (y < -1 ? '#6ad8ff' : y < 2 ? '#2ea0e6' : '#1c6cb8')); } }
