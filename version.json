@@ -1,4 +1,4 @@
 {
-  "build": 49,
-  "notes": "Monsters now move exactly one tile each time you move one tile."
+  "build": 50,
+  "notes": "Wolf and fox companions that merge with their own kind into stronger animals (feed them or they leave), and casting a spell now lets monsters move a tile."
 }

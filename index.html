@@ -576,6 +576,7 @@
     d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
+    if (d.pet) { if (!d.pet.kind) d.pet.kind = 'bear'; if (!d.pet.lvl) d.pet.lvl = 1; if (d.pet.hunger === undefined) d.pet.hunger = 0; }
     return d;
   }
   function restoreRun(d) {
@@ -614,7 +615,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 49;
+  const BUILD = 50;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -762,7 +763,7 @@
       case 'lair': t.type = 'lair'; setupBoss(t, d); break;
       case 'brazier': t.type = 'brazier'; break;
       case 'sigil': { t.type = 'sigil'; const w = makeMonster(d, { lv: 1 }); w.name = 'Warden ' + w.base.n; w.warden = true; w.sigil = key(q, r); w.roam = false; w.elite = false; placeMon(w, q, r); } break;
-      case 'bear': t.type = type; addDue(['river']); break;
+      case 'bear': t.type = type; t.animal = pick(['bear', 'bear', 'wolf', 'wolf', 'fox', 'fox']); addDue(['river']); break;
       case 'chasm': t.type = type; addDue(['tree', 'tree']); break;
       case 'ice': t.type = type; addDue(['tree']); break;
       case 'wall': t.type = type; if (rnd() < .5) addDue(['flint', 'ore']); break;
@@ -1165,15 +1166,35 @@
   function runAction(a) { if (!a || B || S.state !== 'play') return; if (a.off) { toast(a.off); return; } bagSel = null; a.run(); hudDirty = true; }
 
   // ---------- puzzle helpers ----------
+  // animals that can follow you: they must match to merge into one stronger animal, and they need feeding
+  const ANIMALS = { bear: { c: ['#8a5a2a', '#5a3a1a'], s: 'bear', sc: 1, hp: 1, atk: 1 }, wolf: { c: ['#8a929a', '#4a5058'], s: 'beast', sc: 1, hp: .9, atk: 1.25 }, fox: { c: ['#d8782a', '#8a4a1a'], s: 'beast', sc: .8, hp: .8, atk: 1.1 } };
+  const TIERS = ['', 'Great ', 'Mighty '];
+  const animalOf = (t) => (t && t.animal) || 'bear';
+  const petKind = () => (pet && pet.kind) || 'bear';
+  const petName = () => (pet ? TIERS[Math.min(2, (pet.lvl || 1) - 1)] : '') + petKind();
+  const petMaxHp = (kind, lvl) => Math.round((25 + S.revealed / 3) * ANIMALS[kind].hp * (1 + .75 * (lvl - 1)));
   function befriend(t, id, msg) {
-    const p = toWorld(t.q, t.r); burst(p.x, p.y - 10, 14, ['#ff6a8a', '#ffffff'], 30, -40, 20);
-    if (!pet && rnd() < (id === 'cooked' ? .75 : .4)) {
+    const p = toWorld(t.q, t.r), kind = animalOf(t); burst(p.x, p.y - 10, 14, ['#ff6a8a', '#ffffff'], 30, -40, 20);
+    const roll = rnd() < (id === 'cooked' ? .75 : .4);
+    if (pet && petKind() !== kind) { t.type = 'bearfriend'; toast(msg + ' Your ' + petName() + ' bares its teeth: it only teams up with its own kind.'); }
+    else if (pet && (pet.lvl || 1) >= 3) { t.type = 'bearfriend'; toast(msg + ' Your ' + petName() + ' is already as mighty as it gets.'); }
+    else if (roll && pet) {
+      t.type = 'grass'; t.den = true; pet.lvl = (pet.lvl || 1) + 1; pet.max = petMaxHp(kind, pet.lvl); pet.hp = pet.max; pet.hunger = 0;
+      burst(p.x, p.y - 14, 30, ['#ffe14a', '#ffffff'], 60, -40, 20);
+      toast(msg + ' The two join together into a ' + petName() + '!');
+    } else if (roll) {
       t.type = 'grass'; t.den = true;
-      const mx = Math.round(25 + S.revealed / 3);
-      pet = { q: t.q, r: t.r, x: p.x, y: p.y, home: { q: t.q, r: t.r }, hp: mx, max: mx, face: -1 };
+      const mx = petMaxHp(kind, 1);
+      pet = { q: t.q, r: t.r, x: p.x, y: p.y, home: { q: t.q, r: t.r }, hp: mx, max: mx, face: -1, kind, lvl: 1, hunger: 0 };
       toast(msg + ' It decides to follow you and fight by your side!');
     } else { t.type = 'bearfriend'; toast(msg + ' It seems happy to stay here.'); }
     hudDirty = true;
+  }
+  // a hungry or hurt animal gets unhappy and one day just leaves, with no warning
+  function petHunger() {
+    if (!pet) return;
+    pet.hunger = (pet.hunger || 0) + (pet.hp < pet.max * .5 ? 1.5 : 1);
+    if (pet.hunger > 90 && rnd() < Math.min(1, (pet.hunger - 90) / 120)) { toast('Your ' + petName() + ' wandered off and did not come back.'); pet = null; hudDirty = true; }
   }
   function petHome() {
     if (S.cave) { S.cave.petHomes.push(pet.home); pet = null; hudDirty = true; return; }
@@ -1181,7 +1202,7 @@
     if (h && h.type === 'grass' && !monAt(h.q, h.r)) h.type = 'bearfriend';
     pet = null; hudDirty = true;
   }
-  const petAtk = () => Math.round(4 + S.revealed / 12);
+  const petAtk = () => Math.round((4 + S.revealed / 12) * ANIMALS[petKind()].atk * (1 + .6 * ((pet && pet.lvl || 1) - 1)));
   function douse(t) {
     const p = toWorld(t.q, t.r), d = S.revealed; burst(p.x, p.y - 8, 26, ['#ffffff', '#c8d8e8', '#8ccbff'], 50, -40, 0);
     const was = t.type; t.type = 'grass'; t.ash = true;
@@ -1272,7 +1293,7 @@
     if (P.mp < SPELLS.heal.cost) return toast('Not enough magic');
     if (P.hp >= maxHP()) return toast('Already at full health');
     P.mp -= SPELLS.heal.cost; stats.spells++; const b = P.hp; P.hp = Math.min(maxHP(), P.hp + Math.round(maxHP() * (.35 + .05 * (P.spells.heal - 1))));
-    wtxt.push({ x: guy.x, y: guy.y - 26, txt: '+' + (P.hp - b), col: '#7dff8f', t: gt }); burst(guy.x, guy.y - 12, 16, ['#7dff8f', '#ffffff'], 25, -30, 0); hudDirty = true;
+    wtxt.push({ x: guy.x, y: guy.y - 26, txt: '+' + (P.hp - b), col: '#7dff8f', t: gt }); burst(guy.x, guy.y - 12, 16, ['#7dff8f', '#ffffff'], 25, -30, 0); hudDirty = true; if (!B) roamTick();
   }
   function selectSpell(k) {
     if (!P.spells[k] || activeSpells().indexOf(k) < 0 || B || S.state !== 'play' || stashOpen || craftOpen) return;
@@ -1287,7 +1308,7 @@
     P.mp -= sp.cost; stats.spells++; aim = null; hudDirty = true;
     const a = toWorld(guy.q, guy.r), b = toWorld(t.q, t.r);
     mapFx.push({ k, x0: a.x, y0: a.y - 14 - elev(curTile()), x1: b.x, y1: b.y - 10 - elev(t), t0: gt, dur: .35 });
-    later(() => { if (S.state !== 'play') return; u.fn(); hudDirty = true;
+    later(() => { if (S.state !== 'play') return; u.fn(); hudDirty = true; if (!B) roamTick();   // casting takes a turn: monsters move one tile
       const cols = { fire: FIRE, frost: ['#ffffff', '#8ae0ff', '#c8f4ff'], bolt: ['#ffffff', '#ffe14a'], drain: ['#c878ff', '#ffffff'] }[k]; burst(b.x, b.y - 10, 22, cols, 55, -25); if (k === 'bolt') flash = .25; }, 350);
   }
   // ---------- crafting ----------
@@ -1343,10 +1364,11 @@
         spend(); stats.bears++; stats.puzzles++; const d = S.revealed, g = ri(6, 12) + Math.floor(d / 5); P.gold += gm(g); stats.gold += g;
         b.loot.push(makeGear(d, 1)); b.loot.push(randItem(d));
         befriend(b, id, 'The bear munches happily. It was sitting on a stash (+' + g + ' gold).'); } });
-      else if (bf && !pet) O.push({ label: 'Use: feed the bear', sub: 'it might follow you', run() { spend(); befriend(bf, id, 'The bear eats.'); } });
-      if (pet && pet.hp < pet.max) O.push({ label: 'Use: feed your bear', sub: 'heals your bear buddy', better: true, run() {
-        spend(); pet.hp = Math.min(pet.max, pet.hp + Math.round(pet.max * (id === 'cooked' ? 1 : .5))); toast('Your bear munches happily. Bear HP ' + pet.hp + ' / ' + pet.max); } });
+      else if (bf && (!pet || (petKind() === animalOf(bf) && (pet.lvl || 1) < 3))) O.push({ label: 'Use: feed the ' + animalOf(bf), sub: pet ? 'it might join your ' + petKind() + ' and grow stronger' : 'it might follow you', run() { spend(); befriend(bf, id, 'The ' + animalOf(bf) + ' eats.'); } });
     }
+    if (pet && (id === 'fish' || id === 'cooked' || id === 'meat' || id === 'berries')) O.push({ label: 'Use: feed your ' + petName(), sub: 'keeps it fed and happy', better: true, run() {
+      spend(); const full = id !== 'berries'; pet.hunger = full ? 0 : Math.max(0, (pet.hunger || 0) - 40);
+      pet.hp = Math.min(pet.max, pet.hp + Math.round(pet.max * (id === 'cooked' ? 1 : id === 'berries' ? .15 : .5))); toast('Your ' + petName() + ' munches happily. HP ' + pet.hp + ' / ' + pet.max); } });
     if (id === 'water') { const f = near('burning') || near('blaze');
       if (f) O.push({ label: 'Use: douse fire', sub: f.type === 'burning' ? 'someone is trapped inside!' : 'stop the wildfire', better: true, run() { spend(); douse(f); } }); }
     if (id === 'bridge') { const c = near('chasm');
@@ -1511,7 +1533,7 @@
       if (rnd() * 100 < ch) { stats.fled++; m.cool = gt + 8; blog('You got away!'); B.result = 'fled'; B.turn = 'done'; if (TEST) closeBattle(); else { renderBattle(); later(closeBattle, 600); } return; }
       blog('You could not escape!');
     }
-    if (pet && m.hp > 0) blog('Your bear swipes for ' + hitMon(petAtk() * (.8 + .4 * rnd()) - mdef(m) * .5, '#ffd0a0') + '.');
+    if (pet && m.hp > 0) blog('Your ' + petName() + ' swipes for ' + hitMon(petAtk() * (.8 + .4 * rnd()) - mdef(m) * .5, '#ffd0a0') + '.');
     if (P.hire && m.hp > 0) blog(P.hire.name + ' strikes for ' + hitMon(P.hire.atk * (.8 + .4 * rnd()) - mdef(m) * .5, '#ffe0a0') + '.');
     B.menu = 'main';
     if (m.hp <= 0) return winBattle();
@@ -1533,7 +1555,7 @@
       case 'freeze': hitPlayer(.6, 'blasts you with frost'); if (P.hp > 0) hitPlayer(.6, 'strikes while you are frozen'); break;
       case 'double': hitPlayer(.75); if (P.hp > 0) hitPlayer(.75, 'strikes again'); break;
       default:
-        if (pet && rnd() < .25) { const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your bear for ' + d + '.'); if (pet.hp <= 0) { blog('Your bear is badly hurt and limps home to its den.'); petHome(); } }
+        if (pet && rnd() < .25) { const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your ' + petName() + ' for ' + d + '.'); if (pet.hp <= 0) { blog('Your ' + petName() + ' is badly hurt and limps home to its den.'); petHome(); } }
         else hitPlayer(1);
     }
   }
@@ -1547,8 +1569,8 @@
       if (B.charging) { B.charging = false; hitPlayer(2.2, 'unleashes a crushing blow'); }
       else if (m.trait === 'charge' && rnd() < .3) { B.charging = true; blog(m.name + ' is winding up a huge attack!'); fx('!', 'm', '#ff4a4a'); }
       else if (pet && rnd() < .3) {
-        const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your bear for ' + d + '.');
-        if (pet.hp <= 0) { blog('Your bear is badly hurt and limps home to its den.'); petHome(); }
+        const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your ' + petName() + ' for ' + d + '.');
+        if (pet.hp <= 0) { blog('Your ' + petName() + ' is badly hurt and limps home to its den.'); petHome(); }
       }
       else if (P.hire && rnd() < .22) {
         const hr = P.hire, d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()) * (1 - Math.min(.5, hr.def * .04)))); hr.hp = Math.max(0, hr.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' strikes ' + hr.name + ' for ' + d + '.');
@@ -1727,7 +1749,7 @@
   function finishStep() {
     const mv = guy.mv; guy.prev = mv.from; if (pet) { pet.q = mv.from.q; pet.r = mv.from.r; }
     guy.q = mv.to.q; guy.r = mv.to.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null;
-    stats.steps++; if (P.hire) P.hire.left--;
+    stats.steps++; if (P.hire) P.hire.left--; petHunger();
     onEnter(curTile()); hudDirty = true;
     if (!B && S.state === 'play') roamTick();   // monsters take one tile for every tile you take
   }
@@ -2249,7 +2271,7 @@
       case 'cliff': case 'cliffup': ob('cliff' + vr, 54, 60, 27, 40, fCliff(vr), cx, cy + 1); if (ty === 'cliffup') ob('ladder', 20, 28, 10, 17, fLadder, cx + 2, cy + 5); break;
       case 'bear': case 'bearfriend': {
         const fr = ty === 'bearfriend', bx = cx + (fr ? -14 : 0), by = cy + 2 + (fr ? 0 : Math.round(Math.sin(gt * 2) * .6));
-        ell(bx, by, 8, 2, 'rgba(0,20,8,0.45)'); { const bl = bearLP(1); if (bl) lpFeet(bl, bx, by, false); else drawFeet(sprite('bear', SPR.bear, BEARPAL), bx, by, false); }
+        ell(bx, by, 8, 2, 'rgba(0,20,8,0.45)'); { const kd = animalOf(t), bl = bearLP(1, false, kd); if (bl) lpFeet(bl, bx, by, false); else if (kd === 'bear') drawFeet(sprite('bear', SPR.bear, BEARPAL), bx, by, false); }
         if (fr) { const hy = by - 20 + Math.round(Math.sin(gt * 3)); heart(bx - 2, hy); }
         else if (Math.floor(gt) % 3 === 0) { const ic = ICONC.fish; if (ic) G.drawImage(ic, bx + 8, by - 22); }
       } break;
@@ -2638,7 +2660,7 @@
     const build = (mm) => { const s = monSpec(m.roam ? { ...base, c: base.c } : base); s.f = (MONH[base.s] || 20) * (BIGM[base.n] || 1) / s.nh * sc; const c = lpRender(s, mm); c.float = s.float; c.w8 = silC(c, '#ffffff'); c.ice = silC(c, '#9fe8ff'); return c; };
     return battle ? texNow(k, build, bM) : TEST ? null : texGet(k, build);
   }
-  function bearLP(sc, battle) { const k = 'BEAR|' + sc + (battle ? '|B' : ''), build = (mm) => { const s = monSpec({ n: 'Bear', s: 'bear', c: ['#8a5a2a', '#5a3a1a'] }); s.f = 21 / s.nh * sc; return lpRender(s, mm); };
+  function bearLP(sc, battle, kind) { kind = kind || 'bear'; const A = ANIMALS[kind], k = 'BEAR|' + kind + '|' + sc + (battle ? '|B' : ''), build = (mm) => { const s = monSpec({ n: kind[0].toUpperCase() + kind.slice(1), s: A.s, c: A.c }); s.f = 21 / s.nh * sc * A.sc; return lpRender(s, mm); };
     return battle ? texNow(k, build, bM) : TEST ? null : texGet(k, build); }
   function shrineGemLP(state) { const cols = { on: ['#0a2a4a', '#1a5a8a', '#3ab8ff', '#a0f0ff', '#ffffff'], used: ['#1a1e2a', '#3a4258', '#5a6a8a', '#a0aac0', '#ffffff'], off: ['#3a1a06', '#7a400e', '#ffaa3a', '#ffe08a', '#ffffff'] };
     return TEST ? null : texGet('SG|' + state, (mm) => lpRender({ w: 12, h: 16, ax: 6, ay: 14, prims: [{ x: 0, y: -7, rx: 3.6, ry: 6, rz: 3.6, p: 1.1, c: cols[state], em: .35, spec: 1, sh: 10 }] }, mm)); }
@@ -2696,7 +2718,7 @@
     const moving = Math.abs(w.x - pet.x) + Math.abs(w.y - pet.y) > 1, hop = moving ? Math.round(Math.abs(Math.sin(gt * 10)) * 2) : 0;
     const bx = pet.x + ox, by = pet.y + oy + bob;
     ell(bx, by, 8, 2, 'rgba(0,20,8,0.45)');
-    { const bl = bearLP(1); if (bl) lpFeet(bl, bx, by - hop, pet.face > 0); else drawFeet(sprite('bear', SPR.bear, BEARPAL), bx, by - hop, pet.face > 0); }
+    { const sc = 1 + .22 * ((pet.lvl || 1) - 1), bl = bearLP(sc, false, petKind()); if (bl) lpFeet(bl, bx, by - hop, pet.face > 0); else if (petKind() === 'bear') drawFeet(sprite('bear', SPR.bear, BEARPAL), bx, by - hop, pet.face > 0); }
     if (Math.floor(gt * .7) % 4 === 0) heart(bx - 2, by - 22);
     if (pet.hp < pet.max) { px(bx - 8, by + 3, 16, 3, '#000'); px(bx - 7, by + 4, Math.max(1, Math.round(14 * pet.hp / pet.max)), 1, '#7dff8f'); }
   }
@@ -2751,7 +2773,7 @@
   const cellAtMouse = () => { const { ox, oy } = view(); return fromWorld(mouse.x - ox, mouse.y - oy); };
   const TIPS = { grass: 'Grass', tree: 'Tree: chop for wood', bush: 'Berry bush', river: 'River: water and fish', stone: 'Stone', chest: 'Treasure chest!', opened: 'Opened chest',
     spring: 'Healing spring: drink to restore health and magic', rune: 'Rune stone: your first is a spell book, the rest give spell points', mystery: '??? Step on it to find out', merchant: 'Shop: spend your gold', shrine: 'Shrine: checkpoint + your stash (monsters cannot attack you here)', trap: 'Grass',
-    wall: 'Rock wall: a bomb could open it', bear: 'Hungry bear: do not fight it. Give it a fish', bearfriend: 'A happy, full bear. Feed it again and it might join you',
+    wall: 'Rock wall: a bomb could open it', bear: 'Hungry animal: do not fight it. Give it a fish', bearfriend: 'A happy, full animal. Feed it again and it might join you',
     chasm: 'Chasm: bridge it with 2 wood', bridge: 'Bridge', burning: 'Fire! Someone is trapped. Douse it with water', blaze: 'Wildfire: douse with water',
     ice: 'Ice block: melt with Fireball or a campfire (wood)', vault: 'Locked vault: needs an old key', vines: 'Vines: cut for rope making', ore: 'Iron ore vein', flint: 'Flint outcrop',
     crystal: 'Crystal shards', cave: 'Dark cave: a torch lets you go inside', boulder: 'Boulder: needs a pickaxe', cliff: 'Cliff: needs a ladder. The top gives a lookout',
@@ -2945,7 +2967,7 @@
     if (B.charging) text('!', mx, mtop - 16, Math.floor(gt * 6) % 2 ? '#ff4a4a' : '#ffffff', 2);
     // hero side
     plat(hx0, hy0 + bobH, 1);
-    if (pet) { const pb = bearLP(1.1, true); softShadow(20, hy0 + bobH + 5, 9, .5); lpFeet(pb, 20, hy0 + bobH + 5, true); }
+    if (pet) { const pb = bearLP(1.1 * (1 + .22 * ((pet.lvl || 1) - 1)), true, petKind()); softShadow(20, hy0 + bobH + 5, 9, .5); lpFeet(pb, 20, hy0 + bobH + 5, true); }
     const hc = heroLP(0, 1.15), hx = hx0 + lunge('p') + shk(B.hitP), hy = hy0 + bobH + 2;
     softShadow(hx, hy, 9, .55);
     if (!(B.result === 'dead' && Math.floor(gt * 6) % 2)) { lpFeet(hc, hx, hy, false, 1, 1 + Math.sin(gt * 3) * .01);
@@ -3039,7 +3061,7 @@
       '<div class="minline">Lv ' + P.lvl + ' &middot; ' + S.revealed + ' tiles &middot; ' + P.gold + ' gold</div>' +
       '<div class="bar xp"><i style="width:' + pct(P.xp, xn) + '"></i><span>XP ' + P.xp + ' / ' + xn + '</span></div>' +
       '<div class="kv"><span>Tiles</span><b>' + S.revealed + '</b><span>Level</span><b>' + P.lvl + '</b><span>Gold</span><b style="color:#ffd23a">' + P.gold + '</b><span>Best</span><b>' + best + '</b><span>Attack</span><b>' + pAtk() + '</b><span>Defense</span><b>' + pDef() + '</b></div>' +
-      (pet ? '<div class="call bear"><b>Bear buddy</b> · HP ' + pet.hp + ' / ' + pet.max + '</div>' : '') +
+      (pet ? '<div class="call bear"><b>' + petName().replace(/^./, c => c.toUpperCase()) + ' buddy</b> · HP ' + pet.hp + ' / ' + pet.max + '</div>' : '') +
       (P.hire ? '<div class="call bear"><b>' + P.hire.name + '</b> (' + P.hire.cls + ') · HP ' + P.hire.hp + ' / ' + P.hire.max + '<br>' + Math.max(0, P.hire.left) + ' tiles of wages left</div>' : '');
     if (S.cave) st += '<div class="call cave"><b>IN A CAVE</b> · ' + S.cave.n + ' / ' + S.cave.max + ' explored<br>' + (S.cave.guard ? (mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'Guardian: ' + S.cave.guard.name + ' (Lv ' + S.cave.guard.L + ')' : 'Guardian defeated!') : 'The guardian hides deeper...') + '<br>Climb the rope to leave</div>';
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
@@ -3784,7 +3806,7 @@
     $('bMinfo').textContent = (m.trait ? 'It ' + TRAITS[m.trait] : '') + (B.frozen ? ' · frozen' : '') + (B.charging ? ' · WINDING UP!' : '');
     $('bPhp').style.width = pct(P.hp, mh); $('bPhpT').textContent = 'HP ' + P.hp + ' / ' + mh;
     $('bPmp').style.width = pct(P.mp, mm); $('bPmpT').textContent = 'MP ' + P.mp + ' / ' + mm;
-    $('bBear').textContent = pet ? 'Bear buddy HP ' + pet.hp + ' / ' + pet.max : '';
+    $('bBear').textContent = pet ? petName().replace(/^./, c => c.toUpperCase()) + ' buddy HP ' + pet.hp + ' / ' + pet.max : '';
     $('bMhp').style.width = pct(m.hp, m.maxHp); $('bMhpT').textContent = 'HP ' + m.hp + ' / ' + m.maxHp;
     $('bLog').innerHTML = B.log.map((l, i) => '<div style="opacity:' + (i === B.log.length - 1 ? 1 : .6) + '">' + l + '</div>').join('');
     const btn = (label, sub, act, arg, off) => '<button class="act' + (off ? ' off' : '') + '" data-b="' + act + '" data-arg="' + (arg === undefined ? '' : arg) + '">' + label + (sub ? '<small>' + sub + '</small>' : '') + '</button>';
@@ -3932,7 +3954,7 @@
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
