@@ -259,6 +259,10 @@
     hpot:    { name: 'Health potion', d: 'Restores most of your health' },
     mpot:    { name: 'Magic potion', d: 'Restores most of your magic' },
     bomb:    { name: 'Bomb', d: 'Blows open rock walls. Big battle damage' },
+    crbomb:  { name: 'Crystal bomb', d: 'Huge battle damage and a stun (bosses resist the stun). Also blows open rock walls' },
+    frost:   { name: 'Frost flask', d: 'Battle: damages and freezes the foe for 2 turns (not bosses)' },
+    smoke:   { name: 'Smoke bomb', d: 'Battle: vanish from any fight except a boss' },
+    stew:    { name: 'Hearty stew', d: 'Eat: restores most of your health and some magic' },
     key:     { name: 'Old key', d: 'Opens a locked vault' },
     vine:    { name: 'Vine', d: 'Crafting: twist 2 into rope' },
     rope:    { name: 'Rope', d: 'Crafting: ladders and rafts' },
@@ -288,9 +292,13 @@
     { id: 'ckey', needs: { crystal: 3 }, skill: ['artisan', 2] },
     { id: 'pack', needs: { hide: 3, rope: 1 }, skill: ['artisan', 3] },
     { id: 'mpot', needs: { water: 1, crystal: 1 }, skill: ['alchemy', 1] },
+    { id: 'smoke', needs: { flint: 1, wood: 1, vine: 1 }, skill: ['alchemy', 1] },
+    { id: 'frost', needs: { water: 2, crystal: 1 }, skill: ['alchemy', 2] },
+    { id: 'stew', needs: { cooked: 1, meat: 1, berries: 1 }, skill: ['alchemy', 2] },
+    { id: 'crbomb', needs: { crystal: 2, bomb: 1 }, skill: ['artisan', 2] },
   ];
   const CRAFTTABS = [['all', 'All'], ['wood', 'Wood'], ['vine', 'Rope & vine'], ['mine', 'Stone & iron'], ['crystal', 'Crystal'], ['food', 'Food & water'], ['hide', 'Hide']];
-  const CRAFTMATS = { wood: 'wood', rope: 'vine', vine: 'vine', stone: 'mine', iron: 'mine', flint: 'mine', crystal: 'crystal', berries: 'food', water: 'food', hide: 'hide' };
+  const CRAFTMATS = { cooked: 'food', meat: 'food', bomb: 'mine', wood: 'wood', rope: 'vine', vine: 'vine', stone: 'mine', iron: 'mine', flint: 'mine', crystal: 'crystal', berries: 'food', water: 'food', hide: 'hide' };
   const recipeTabs = (r) => { const t = new Set(); for (const k in r.needs) if (CRAFTMATS[k]) t.add(CRAFTMATS[k]); return t; };
   const SPELLS = {
     fire:  { name: 'Fireball', cost: 4, d: 0,  desc: 'ignores armor' },
@@ -426,14 +434,14 @@
     { id: 'flow', br: 1, name: 'Mana Flow', max: 3, cost: [1, 2, 3], d: (r) => '+' + r + ' extra magic for every 2 tiles you reveal' },
     { id: 'reach', br: 1, name: 'Long Reach', max: 2, cost: [2, 3], d: (r) => 'map spells reach ' + Math.min(8, 3 + r) + ' tiles' },
     { id: 'focus', br: 1, name: 'Arcane Focus', max: 3, cost: [3, 4, 5], d: (r) => '+' + Math.min(r, 3) + ' spell slot' + (r > 1 ? 's' : '') + ' (' + Math.min(6, 3 + r) + ' total)' },
-    { id: 'alchemy', br: 1, name: 'Alchemy', max: 1, cost: [2], d: (r) => 'craft magic potions from water and a crystal shard' },
+    { id: 'alchemy', br: 1, name: 'Alchemy', max: 2, cost: [2, 3], d: (r) => ['', 'craft magic potions and smoke bombs', 'also brew frost flasks and hearty stew'][Math.min(r, 2)] },
     { id: 'ward', br: 1, name: 'Arcane Ward', max: 3, cost: [2, 3, 4], d: (r) => 'take ' + Math.min(75, 8 * r) + '% less damage while you have magic left' },
     { id: 'scav', br: 2, name: 'Scavenger', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + 15 * r + '% gold from everything' },
     { id: 'luck', br: 2, name: 'Lucky Finds', max: 3, cost: [1, 2, 3], d: (r) => '+' + 12 * r + '% chance of extra gear in chests' },
     { id: 'mule', br: 2, name: 'Pack Mule', max: 2, cost: [2, 3], d: (r) => '+' + Math.min(r, 8) + ' bag slots (bag can reach 14)' },
     { id: 'flee', br: 2, name: 'Fleet Foot', max: 3, cost: [1, 2, 3], d: (r) => '+' + 10 * r + '% chance to run from battle' },
     { id: 'trap', br: 2, name: 'Trap Sense', max: 2, cost: [1, 2], d: (r) => r >= 2 ? 'traps cannot hurt you' : 'traps do half damage' },
-    { id: 'artisan', br: 2, name: 'Artisan', max: 3, cost: [2, 3, 4], d: (r) => ['', 'craft pickaxes and ladders', 'also craft rafts and crystal keys', 'also craft pack upgrades'][Math.min(r, 3)] },
+    { id: 'artisan', br: 2, name: 'Artisan', max: 3, cost: [2, 3, 4], d: (r) => ['', 'craft pickaxes and ladders', 'also craft rafts, crystal keys and crystal bombs', 'also craft pack upgrades'][Math.min(r, 3)] },
     { id: 'gems', br: 2, name: 'Gem Hunter', max: 1, cost: [4], d: (r) => 'more space gem veins in caves, +1 gem from every guardian and boss' },
   ];
   const BRANCH = [['WARRIOR', '#ff8a6a'], ['MAGE', '#b89aff'], ['EXPLORER', '#7dff8f']];
@@ -604,7 +612,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 46;
+  const BUILD = 47;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -765,7 +773,7 @@
       case 'smith': t.type = type; break;
       case 'merchant': t.type = type; t.stock = [
         { it: { kind: 'item', id: 'hpot' }, price: 12 + Math.floor(d / 10) },
-        { it: { kind: 'item', id: pick(['mpot', 'bomb', 'cooked', 'torch', 'rope']) }, price: 10 + Math.floor(d / 12) },
+        { it: { kind: 'item', id: pick(['mpot', 'bomb', 'cooked', 'torch', 'rope', 'smoke']) }, price: 10 + Math.floor(d / 12) },
         ...(rnd() < .4 ? [{ it: { kind: 'item', id: 'pack' }, price: 70 + Math.floor(d / 2) }] : []),
         (() => { const g = makeGear(d, 1); return { it: g, price: 25 + g.tier * 18 }; })(),
         ...(rnd() < .55 ? [{ special: 'tome', price: 90 + Math.floor(d * 1.2) }] : []),
@@ -1304,7 +1312,7 @@
   }
 
   // ---------- bag item options ----------
-  const USE = { pack: 'add bag slot', shroom: 'eat', berries: 'eat', meat: 'eat', fish: 'eat raw', cooked: 'eat', water: 'drink', hpot: 'drink', mpot: 'drink', wood: 'make camp', crystal: 'absorb' };
+  const USE = { pack: 'add bag slot', shroom: 'eat', berries: 'eat', meat: 'eat', fish: 'eat raw', cooked: 'eat', water: 'drink', hpot: 'drink', mpot: 'drink', stew: 'eat', wood: 'make camp', crystal: 'absorb' };
   function itemOptions(i) {
     const e = P.bag[i], O = [];
     if (e === undefined) return O;
@@ -1320,7 +1328,7 @@
     const adj = DIRS.map(([a, b]) => tiles.get(key(guy.q + a, guy.r + b))).filter(Boolean);
     const near = (ty) => adj.find(t => t.type === ty);
     const spend = () => { P.bag.splice(P.bag.indexOf(id), 1); stats.items++; };
-    if (id === 'bomb') {
+    if (id === 'bomb' || id === 'crbomb') {
       const w = near('wall');
       O.push({ label: 'Use: blow up wall', sub: 'opens the sealed hex', better: !!w, off: !w && 'Stand next to a rock wall (or save it for battle)', run() {
         spend(); w.type = 'chest'; w.safe = true; w.rich = true; stats.puzzles++;
@@ -1403,12 +1411,15 @@
         let c = 0; P.bag = P.bag.map(x => x === 'fish' ? (c++, 'cooked') : x);
         msg = 'You make camp: +' + heal(mh * .3) + ' HP, +' + mana(mm * .3) + ' MP' + (c ? ', cooked ' + c + ' fish' : ''); i = P.bag.indexOf('wood'); } break;
       case 'stone': if (!inB) return null; { const dmg = 5 + 2 * P.lvl; hitMon(dmg); msg = 'You hurl a stone: ' + dmg + ' damage'; if (rnd() < .4 && B.m.hp > 0) { B.frozen = 1; msg += ', stunned!'; } } break;
+      case 'stew': msg = 'You eat the stew: +' + heal(mh * .8) + ' HP, +' + mana(mm * .35) + ' MP'; break;
+      case 'frost': if (!inB) return null; { const dmg = 8 + 3 * P.lvl; hitMon(dmg, '#a0e8ff'); msg = 'The flask shatters: ' + dmg + ' damage'; if (B.m.boss) msg += ', but the boss shrugs off the cold'; else if (B.m.hp > 0) { B.frozen = Math.max(B.frozen, 2); msg += ', frozen for 2 turns!'; fx('Z', 'm', '#a0e8ff'); } } break;
+      case 'crbomb': if (!inB) return null; { const dmg = 36 + 8 * P.lvl; hitMon(dmg, '#8ae8ff'); B.boom = gt; msg = 'CRYSTAL BLAST! ' + dmg + ' damage'; if (!B.m.boss && B.m.hp > 0) { B.frozen = Math.max(B.frozen, 1); msg += ', stunned!'; } } break;
       case 'bomb': if (!inB) return null; { const dmg = 18 + 5 * P.lvl; hitMon(dmg); B.boom = gt; msg = 'BOOM! The bomb deals ' + dmg + ' damage'; } break;
       default: return null;
     }
     P.bag.splice(i, 1); stats.items++; hudDirty = true; return msg;
   }
-  const battleUsable = (e) => typeof e === 'string' && ['shroom','berries','meat','fish','cooked','water','hpot','mpot','crystal','stone','bomb'].includes(e);
+  const battleUsable = (e) => typeof e === 'string' && ['shroom','berries','meat','fish','cooked','water','hpot','mpot','crystal','stone','bomb','crbomb','frost','smoke','stew'].includes(e);
 
   // ---------- stash ----------
   function bagToStash(i) {
@@ -1488,6 +1499,9 @@
       else if (arg === 'frost') { const d = hitMon((4 + 1.8 * L) * pw, '#a0e8ff'); const f = !m.elite || rnd() < .6; if (f) B.frozen = 1; blog('Frost deals ' + d + (f ? ' and freezes it.' : ', but it resists the freeze.')); }
       else if (arg === 'drain') { const d = hitMon((5 + 2 * L) * pw, '#c878ff'), h = Math.round(d * .6); P.hp = Math.min(mh, P.hp + h); fx('+' + h, 'p', '#7dff8f'); blog('Drain steals ' + d + ' (+' + h + ' HP).'); }
       else if (arg === 'heal') { const b = P.hp; P.hp = Math.min(mh, P.hp + Math.round(mh * (.35 + .05 * (lv - 1)) * spMul())); fx('+' + (P.hp - b), 'p', '#7dff8f'); blog('You heal ' + (P.hp - b) + ' HP.'); }
+    } else if (type === 'item' && P.bag[arg] === 'smoke') {
+      if (m.boss) return; P.bag.splice(arg, 1); stats.items++; stats.fled++; m.cool = gt + 8; blog('You vanish in a cloud of smoke!'); B.result = 'fled'; B.turn = 'done'; hudDirty = true;
+      if (TEST) closeBattle(); else { renderBattle(); later(closeBattle, 600); } return;
     } else if (type === 'item') { if (!battleUsable(P.bag[arg])) return; const msg = useItem(arg, true); if (!msg) return; blog(msg + '.'); }
     else if (type === 'run') {
       if (m.boss) return;
@@ -2688,6 +2702,10 @@
     rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const ch = row[x]; if (ch === '.' || !pal[ch]) continue; g.fillStyle = pal[ch]; g.fillRect(x + 1 + ox, y + 1 + oy, 1, 1); } });
     polish(c, { rim: true }); return c;
   }
+  IM.crbomb = [IM.bomb[0], { k: '#1c4a8a', K: '#7ae0ff', f: '#c8a060', y: '#ffffff' }];
+  IM.frost = [IM.mpot[0], { g: '#e8f8ff', b: '#3aa8e8', B: '#d0f4ff' }];
+  IM.smoke = [["..w.w.....", ".w.w.w....", "..wwww....", "...ssss...", "..sSssss..", ".sSssssss.", ".ssssssss.", "..ssssss..", "...ssss...", ".........."], { w: '#eeeef6', s: '#6a6e7a', S: '#b4bac8' }];
+  IM.stew = [["...w..w...", "....w..w..", "..........", ".yyyyyyyy.", "yYoooooooy", "yooooOoooy", ".yooooooy.", "..yyyyyy..", "...yyyy...", ".........."], { w: '#eeeef6', y: '#a8723a', Y: '#d8a060', o: '#c8642a', O: '#ff9a4a' }];
   function buildIcons() { for (const k in IM) { ICONC[k] = iconFrom(IM[k][0], IM[k][1]); ICONURL[k] = ICONC[k].toDataURL(); } }
   function gearIconC(g) {
     const k = g.slot + g.col + (g.gem || ''); if (GIC[k]) return GIC[k].c;
@@ -3414,7 +3432,7 @@
       hd('Controls') + li(['<b>Click a glowing outline</b> to reveal a tile. <b>Click a tile</b> to walk there. On a phone, tap once to select, tap again to go.', 'Drag to look around. Pinch, mouse wheel or + / - to zoom. 0 resets.', '<b>Right-click</b> (or long-press) gear on the ground, or an Equip button, to compare it with what you wear. Use the arrows to flip through several items.', 'Keys: <b>C</b> crafting, <b>K</b> skills, <b>1-6</b> spells, <b>Esc</b> cancels or closes.']) +
       hd('Shrines') + li(['Shrines are checkpoints. Monsters cannot attack you on one. Rest to heal fully, open your stash (it is safe when you die), and swap your carried spells in the Spellbook.', 'They appear more often when you are hurt or your bag is full, and always after a long stretch.']) +
       hd('Growing stronger') + li(['You gain a skill point every level and 2 from each boss. Higher ranks of a skill cost more points. Master every skill for an <b>Awakening</b>: your bonuses lock in, the tree resets, and levels need 1.5x more XP.', 'The first rune stone you find is a spell book: pick Fireball, Frost or Heal. Every rune after that gives a spell point, which you spend at a shop to learn new spells or make known ones stronger. You carry only 3 spells (up to 6 with Arcane Focus).', 'Gear drops from chests, monsters and shops. Compare before you equip, and reinforce armor with iron.']) +
-      hd('Crafting') + li(['Press C. Rope, torch, bridge, bomb and health potion are always open. Pickaxe, ladder, raft, crystal key, pack upgrade and magic potion unlock with the <b>Artisan</b> and <b>Alchemy</b> skills.', 'At a shrine, crafting also uses materials from your stash.']) +
+      hd('Crafting') + li(['Press C. Rope, torch, bridge, bomb and health potion are always open. Pickaxe, ladder, raft, crystal key, crystal bomb and pack upgrade unlock with the <b>Artisan</b> skill. Magic potion, smoke bomb, frost flask and hearty stew unlock with <b>Alchemy</b>.', 'At a shrine, crafting also uses materials from your stash.']) +
       hd('Space gems') + li(['Gems come from caves and from slain guardians and bosses.', '<b>Spend:</b> one gem pays for a full rest at a shrine (your first 3 rests are free; with no gem you only recover half).', '<b>Score:</b> every gem you find counts toward your Hall of Greats score. Spending a gem never lowers it.']) +
       hd('Shops and keys') + li(['A shop appears every so often. Open it to buy and sell in its own window: potions, gear, tomes (+1 skill point), and a spell trainer that takes spell points, and rarely a Draught of Rebirth that resets your skills.', 'A locked vault needs an <b>old key</b>, which powerful monsters drop: elites, cave guardians, bosses, trolls, golems, demons and dragons.']) +
       hd('Bosses and caves') + li(['Every so often a lair appears and a mist blocks the way until you open it (wardens, braziers or an offering) and defeat the boss.', 'Caves are dark: light a torch to go in. They hold gem veins and a guardian. Climb the rope to leave.']) +
@@ -3476,7 +3494,7 @@
   }
   // ---------- shop window ----------
   let shopOpen = false, shopArm = null;
-  const SELLV = { berries: 2, meat: 3, fish: 4, cooked: 6, water: 2, wood: 2, stone: 2, vine: 2, flint: 3, iron: 6, crystal: 14, hide: 8, hpot: 18, mpot: 18, bomb: 14, torch: 7, rope: 6, pickaxe: 24, ladder: 12, raft: 18, ckey: 40, pack: 40, bridge: 10, key: 60 };
+  const SELLV = { berries: 2, meat: 3, fish: 4, cooked: 6, water: 2, wood: 2, stone: 2, vine: 2, flint: 3, iron: 6, crystal: 14, hide: 8, hpot: 18, mpot: 18, bomb: 14, crbomb: 40, frost: 20, smoke: 16, stew: 16, torch: 7, rope: 6, pickaxe: 24, ladder: 12, raft: 18, ckey: 40, pack: 40, bridge: 10, key: 60 };
   const sellPrice = (e) => typeof e === 'string' ? (SELLV[e] || 3) : 6 + Math.round(gpower(e) * 3.5);
   const shopTile = () => { const t = curTile(); return t && t.type === 'merchant' ? t : null; };
   function openShop() { if (TEST || B || S.state !== 'play' || !shopTile()) return; shopOpen = true; shopArm = null; $('shop').style.display = 'flex'; renderShop(); }
