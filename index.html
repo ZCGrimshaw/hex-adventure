@@ -206,6 +206,8 @@
 <div id="bookAsk" class="modal"><div class="bx" id="bookAskBox" style="width:min(460px,94vw);text-align:center;border-color:#c8a8ff"></div></div>
 <div id="springAsk" class="modal"><div class="bx" id="springBox" style="width:min(420px,94vw);text-align:center;border-color:#5ad0ff"></div></div>
 <div id="warpBar" class="ui"><span>Choose a shrine to warp to <b>(costs 1 crystal)</b></span><button class="act" id="warpCancel">Cancel</button></div>
+<div id="hireAsk" class="modal"><div class="bx" id="hireBox" style="width:min(460px,94vw);text-align:center;border-color:#ffd23a"></div></div>
+<div id="smith" class="modal"><div class="bx" id="smithBox" style="width:min(640px,95vw);border-color:#ff9a3a"></div></div>
 <div id="shop" class="modal"><div class="bx" id="shopBox" style="width:min(940px,96vw);border-color:#ffd23a"></div></div>
 <div id="inspect" class="modal"><div class="bx" id="inspectBox" style="width:min(520px,95vw);text-align:center"></div></div>
 <div id="stash" class="modal"><div class="bx" id="stashBox"></div></div>
@@ -557,11 +559,11 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ hire: null, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
-    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
     return d;
@@ -602,7 +604,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 44;
+  const BUILD = 45;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -641,7 +643,7 @@
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
-    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
+    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
@@ -729,6 +731,8 @@
     else if (S.boss && !S.boss.open && S.boss.forced.length && d >= S.boss.nextForce) { type = S.boss.forced.shift(); S.boss.nextForce = d + 2 + ri(0, 1); }
     else if (shrineDue(d)) { type = 'shrine'; S.nextShrine = 1e9; S.lastShrine = d; }
     else if (d >= S.nextShop && d - S.lastShrine >= 3) { type = 'merchant'; S.nextShop = d + ri(45, 70); }
+    else if (d >= (S.nextHire || 1e9) && d >= 14 && d - S.lastShrine >= 3) { type = 'hireling'; S.nextHire = d + ri(75, 120); }
+    else if (d >= (S.nextSmith || 1e9) && d >= 22 && d - S.lastShrine >= 3) { type = 'smith'; S.nextSmith = d + ri(95, 150); }
     else if (d === 2 && !P.eq.weapon) { type = 'gear'; t.loot.push(makeGear(0, 0, 'weapon')); }
     else if (d === 8 && !Object.keys(P.spells).length) type = 'rune';
     else if (!S.caveSeen && d >= S.firstCave) type = 'cave';
@@ -757,6 +761,8 @@
       case 'cliff': t.type = type; addDue(['vines', 'tree', 'tree']); break;
       case 'lake': t.type = type; addDue(['vines', 'tree', 'tree', 'tree']); break;
       case 'cdoor': t.type = type; addDue(['crystal', 'crystal']); break;
+      case 'hireling': t.type = type; t.hire = makeHireling(d); break;
+      case 'smith': t.type = type; break;
       case 'merchant': t.type = type; t.stock = [
         { it: { kind: 'item', id: 'hpot' }, price: 12 + Math.floor(d / 10) },
         { it: { kind: 'item', id: pick(['mpot', 'bomb', 'cooked', 'torch', 'rope']) }, price: 10 + Math.floor(d / 12) },
@@ -1024,7 +1030,7 @@
   const springHurt = () => P.hp < maxHP() || P.mp < maxMP() || (pet && pet.hp < pet.max);
   function drinkSpring(t) {
     if (!t || t.type !== 'spring' || t.dry) return;
-    P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; t.dry = 1;
+    P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; t.dry = 1;
     const w = toWorld(t.q, t.r); burst(w.x, w.y - 8, 22, ['#5ad0ff', '#a0f0ff', '#ffffff'], 50, -35, 28);
     toast('You drink the cool spring water. Fully restored!'); hudDirty = true;
   }
@@ -1049,7 +1055,7 @@
     }
     if (t.type === 'shrine') {
       if (S.cp !== t) {
-        S.cp = t; if (pet) pet.hp = pet.max;
+        S.cp = t; if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max;
         if (!t.used) { t.used = true; stats.shrines++; P.hp = mh; P.mp = maxMP(); toast('Checkpoint saved. Health and magic restored! Your stash is here.'); }
         else toast('Checkpoint saved');
         const w = toWorld(t.q, t.r); burst(w.x, w.y - 6, 24, ['#a0f0ff', '#ffffff', '#5ad0ff'], 60, -40, 30);
@@ -1116,7 +1122,7 @@
         if (fr) { S.freeRests--; P.hp = maxHP(); P.mp = maxMP(); toast('You rest at the shrine and feel restored (' + S.freeRests + ' free rest' + (S.freeRests === 1 ? '' : 's') + ' left)'); }
         else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
         else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
-        if (pet) pet.hp = pet.max; hudDirty = true; later(spawnMist, 1200); } }); }
+        if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
@@ -1132,6 +1138,8 @@
       if (t.fish > 0) gather('Catch fish', t.fish + ' left', 'fish', () => { t.fish--; t.fishAt = gt + 60; });
       gather('Draw water', 'magic, or douse fire', 'water', () => {});
     }
+    if (t.type === 'hireling' && t.hire) { const hh = t.hire; A.push({ label: 'Talk to ' + hh.name, sub: hh.cls + ' · HP ' + hh.max + ' ATK ' + hh.atk + ' DEF ' + hh.def + ' · ' + hh.rate + ' gold per tile', hot: true, off: P.hire && 'You already employ ' + P.hire.name, run() { askHire('new', t); } }); }
+    if (t.type === 'smith') A.push({ label: 'Visit the blacksmith', sub: 'reforge gear: up to +' + SMITH_MAX + ' each', hot: true, run() { openSmith(); } });
     if (t.type === 'merchant') A.push({ label: 'Open shop', sub: t.stock.length + ' for sale · sell your spare items', hot: true, run() { openShop(); } });
     t.loot.slice(0, 4).forEach((it) => {
       const drop = () => { t.loot.splice(t.loot.indexOf(it), 1); if (!t.loot.length) t.grave = false; };
@@ -1488,6 +1496,7 @@
       blog('You could not escape!');
     }
     if (pet && m.hp > 0) blog('Your bear swipes for ' + hitMon(petAtk() * (.8 + .4 * rnd()) - mdef(m) * .5, '#ffd0a0') + '.');
+    if (P.hire && m.hp > 0) blog(P.hire.name + ' strikes for ' + hitMon(P.hire.atk * (.8 + .4 * rnd()) - mdef(m) * .5, '#ffe0a0') + '.');
     B.menu = 'main';
     if (m.hp <= 0) return winBattle();
     B.turn = 'enemy'; renderBattle(); later(enemyTurn, 650);
@@ -1524,6 +1533,10 @@
       else if (pet && rnd() < .3) {
         const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your bear for ' + d + '.');
         if (pet.hp <= 0) { blog('Your bear is badly hurt and limps home to its den.'); petHome(); }
+      }
+      else if (P.hire && rnd() < .22) {
+        const hr = P.hire, d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()) * (1 - Math.min(.5, hr.def * .04)))); hr.hp = Math.max(0, hr.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' strikes ' + hr.name + ' for ' + d + '.');
+        if (hr.hp <= 0) { blog(hr.name + ' is badly hurt and leaves your service.'); P.hire = null; }
       }
       else {
         hitPlayer(1);
@@ -1698,7 +1711,7 @@
   function finishStep() {
     const mv = guy.mv; guy.prev = mv.from; if (pet) { pet.q = mv.from.q; pet.r = mv.from.r; }
     guy.q = mv.to.q; guy.r = mv.to.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null;
-    stats.steps++;
+    stats.steps++; if (P.hire) P.hire.left--;
     onEnter(curTile()); hudDirty = true;
   }
   function walkInstant(q, r) { // test helper
@@ -1732,6 +1745,7 @@
 
   function update(dt) {
     if (updBlock) return;
+    if (P.hire && P.hire.left <= 0 && !springOpen && !B && S.state === 'play' && !guy.mv && !TEST) askHire('renew');
     if (S.state === 'play' && !B && !stashOpen && !craftOpen && !skillsOpen && !hallOpen) {
       if (!guy.mv) chooseMove();
       if (guy.mv) {
@@ -1744,6 +1758,7 @@
       fireT += dt; if (fireT > 5) { fireT = 0; fireTick(); }
       if (mistCap()) { mistT += dt; if (mistT > 22) { mistT = 0; spawnMist(); } } else mistT = 0;
     }
+    hireTick(dt);
     if (pet) { const w = toWorld(pet.q, pet.r), k = Math.min(1, dt * 4); if (Math.abs(w.x - pet.x) > 1) pet.face = w.x > pet.x ? 1 : -1; pet.x += (w.x - pet.x) * k; pet.y += (w.y - pet.y) * k; }
     for (const m of mons.values()) { const w = toWorld(m.q, m.r), k = Math.min(1, dt * 5); m.x += (w.x - m.x) * k; m.y += (w.y - m.y) * k; }
     // ambient particles
@@ -1905,7 +1920,8 @@
       case 'river': return 'water';
       case 'lake': case 'lakeraft': return 'deep';
       case 'stone': case 'wall': case 'vault': case 'boulder': case 'ore': case 'flint': case 'cave': case 'cavelit': case 'cliff': case 'cliffup': return 'stone';
-      case 'merchant': case 'rubble': return 'dirt';
+      case 'merchant': case 'rubble': case 'smith': return 'dirt';
+      case 'hireling': return 'grass';
       case 'trap': return t.sprung ? 'dirt' : 'grass';
       case 'shrine': return 'marble';
       case 'burning': case 'blaze': return 'burnt';
@@ -2182,6 +2198,8 @@
         glow(cx, cy - 14 + oy, 16, '#ffe14a', .35);
         for (let y = 0; y < 7; y++) for (let x = 0; x < 5; x++) if (QM[y][x] === '1') { px(cx - 5 + x * 2 + 1, cy - 22 + y * 2 + oy + 1, 2, 2, '#000'); px(cx - 5 + x * 2, cy - 22 + y * 2 + oy, 2, 2, c); } } break;
       case 'trap': if (t.sprung) ob('spikes', 32, 14, 16, 10, fSpikes, cx, cy + 2); break;
+      case 'hireling': if (t.hire) { drawHuman(cx, cy + 4, t.hire.cls, 1, 0); const b = Math.round(Math.sin(gt * 4) * 2); px(cx - 1, cy - 30 + b, 2, 5, '#000'); px(cx, cy - 29 + b, 1, 3, '#ffe14a'); px(cx, cy - 24 + b, 1, 1, '#ffe14a'); } break;
+      case 'smith': { px(cx - 8, cy - 1, 14, 2, '#2a2a34'); px(cx - 10, cy - 5, 18, 4, '#5a5a6a'); px(cx - 10, cy - 5, 18, 1, '#9a9aae'); px(cx - 6, cy - 8, 10, 3, '#4a4a58'); px(cx + 9, cy - 6, 8, 7, '#3a2a22'); px(cx + 10, cy - 5, 6, 4, '#ff7a1a'); px(cx + 11, cy - 6 - (Math.floor(gt * 8) % 2), 4, 2, '#ffd23a'); px(cx - 14, cy - 12, 2, 9, '#7a5a3a'); px(cx - 16, cy - 14, 6, 3, '#8a8a9a'); glow(cx + 13, cy - 5, 22, '#ff8a2a', .4 + .15 * Math.sin(gt * 9)); break; }
       case 'merchant': ob('tent', 46, 36, 23, 33, fTent, cx, cy + 3); if (Math.floor(gt * 2) % 5 === 0) px(cx + 8, cy - 8, 1, 1, '#ffffff'); break;
       case 'shrine': { ob('shrine', 28, 32, 14, 29, fShrine, cx - 13, cy + 1); ob('stash', 24, 26, 12, 18, fChest(false, true), cx + 18, cy + 5);
         const on = S.cp === t, bob = Math.round(Math.sin(gt * 2.5) * 1.5), fy = cy - 31 + bob;
@@ -2716,6 +2734,7 @@
     gemvein: 'SPACE GEM vein! A pickaxe makes mining it safe', den: 'Guardian den', dendone: 'The guardian\'s empty den', caveexit: 'Rope back to the surface', cavedone: 'A collapsed cave', cavelit: 'Lit cave entrance: step on it to go inside',
     lair: 'Boss lair', lairdone: 'A conquered lair', sigil: 'Sigil stone', brazier: 'Boss brazier: light it with a torch or wood + flint' };
   let lastTip = '';
+  Object.assign(TIPS, { hireling: 'Traveller for hire: fights beside you for wages', smith: 'Blacksmith: spend gold to reforge your gear' });
   function setTip(s) { if (s !== lastTip) { lastTip = s; $('tipText').textContent = s; $('tipText').style.display = s ? 'inline' : 'none'; } }
   function flushGlows() {
     if (!glows.length) return;
@@ -2779,13 +2798,14 @@
     const list = [];
     for (const t of tiles.values()) { const w = toWorld(t.q, t.r), sx = w.x + ox, sy = w.y + oy; if (sx < -50 || sx > W + 50 || sy < -60 || sy > H + 70) continue; list.push({ t, w, y: w.y }); }
     for (const m of mons.values()) { const sx = m.x + ox, sy = m.y + oy; if (sx < -60 || sx > W + 60 || sy < -80 || sy > H + 80) continue; list.push({ m, y: m.y + .3 }); }
-    list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 });
+    list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 }); if (P.hire && hirePos) list.push({ hired: 1, y: hirePos.y + .4 });
     if (S.state === 'play' && !guy.mv && !caveFull() && !warpMode) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); }
     if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
     list.sort((a, b) => a.y - b.y);
     for (const it of list) {
       if (it.guy) drawGuy(ox, oy);
       else if (it.pet) drawPet(ox, oy);
+      else if (it.hired) drawHired(ox, oy);
       else if (it.m) drawMon(it.m, ox, oy);
       else if (it.cand) { const w = toWorld(it.q, it.r), hv = hoverC && hoverC.q === it.q && hoverC.r === it.r, pul = .5 + .5 * Math.sin(gt * 4);
         if (hv) { outlineHex(Math.round(w.x) + ox, Math.round(w.y) + oy, Math.sin(gt * 6) > 0 ? '#ffffff' : '#9fe8ff', 'rgba(140,255,170,0.14)'); glow(Math.round(w.x) + ox, Math.round(w.y) + oy, 30, '#7dff8f', .3); }
@@ -2994,7 +3014,8 @@
       '<div class="minline">Lv ' + P.lvl + ' &middot; ' + S.revealed + ' tiles &middot; ' + P.gold + ' gold</div>' +
       '<div class="bar xp"><i style="width:' + pct(P.xp, xn) + '"></i><span>XP ' + P.xp + ' / ' + xn + '</span></div>' +
       '<div class="kv"><span>Tiles</span><b>' + S.revealed + '</b><span>Level</span><b>' + P.lvl + '</b><span>Gold</span><b style="color:#ffd23a">' + P.gold + '</b><span>Best</span><b>' + best + '</b><span>Attack</span><b>' + pAtk() + '</b><span>Defense</span><b>' + pDef() + '</b></div>' +
-      (pet ? '<div class="call bear"><b>Bear buddy</b> · HP ' + pet.hp + ' / ' + pet.max + '</div>' : '');
+      (pet ? '<div class="call bear"><b>Bear buddy</b> · HP ' + pet.hp + ' / ' + pet.max + '</div>' : '') +
+      (P.hire ? '<div class="call bear"><b>' + P.hire.name + '</b> (' + P.hire.cls + ') · HP ' + P.hire.hp + ' / ' + P.hire.max + '<br>' + Math.max(0, P.hire.left) + ' tiles of wages left</div>' : '');
     if (S.cave) st += '<div class="call cave"><b>IN A CAVE</b> · ' + S.cave.n + ' / ' + S.cave.max + ' explored<br>' + (S.cave.guard ? (mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'Guardian: ' + S.cave.guard.name + ' (Lv ' + S.cave.guard.L + ')' : 'Guardian defeated!') : 'The guardian hides deeper...') + '<br>Climb the rope to leave</div>';
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
     else st += '<div class="call dim">Next boss around tile ' + S.nextBoss + '</div>';
@@ -3551,6 +3572,89 @@
     el.style.display = 'flex'; awakenT = performance.now(); flash = 1;
     el.onclick = () => { if (performance.now() - awakenT > 1500) { el.style.display = 'none'; hudDirty = true; toast('You are awakened! A fresh skill tree awaits (press K)'); } };
   }
+  // ---------- hired help and the blacksmith ----------
+  const HIRE_NAMES = ['Garrick', 'Mira', 'Tobin', 'Sable', 'Hob', 'Wren', 'Dax', 'Ilsa', 'Brom', 'Kestrel', 'Joss', 'Nell', 'Orrin', 'Pell'];
+  const HIRE_CLS = [['Sellsword', 1.25, .8, 1], ['Shieldbearer', .75, 1.4, 1.35], ['Scout', 1, 1, .85]];   // name, attack, defense and health multipliers
+  const HIRE_PLANS = [[12, 0], [25, .06], [50, .12]];                                                    // tiles walked, discount for the longer deal
+  const hireBase = (h) => Math.max(1, Math.round((h.atk * .8 + h.def * .6 + h.max / 14) / 3.2 * (1 + S.revealed / 250)));
+  function makeHireling(d) {
+    const c = pick(HIRE_CLS), lv = 1 + d / 12;
+    const h = { name: pick(HIRE_NAMES), cls: c[0], atk: Math.max(2, Math.round((3 + lv * .9 + ri(0, 2)) * c[1])), def: Math.max(1, Math.round((1.5 + lv * .5 + ri(0, 1)) * c[2])) };
+    h.max = Math.round((24 + lv * 5 + ri(0, 8)) * c[3]); h.hp = h.max; h.rate = hireBase(h); return h;
+  }
+  const hireScore = () => stats.bosses * 3 + stats.puzzles + stats.caves + stats.shrines;   // big deeds the hired hand shared in
+  const planTotal = (rate, p) => Math.max(1, Math.round(rate * p[0] * (1 - p[1])));
+  let hireHandle = null;
+  function askHire(mode, tile) {
+    if (TEST || springOpen || B) return; const renew = mode === 'renew', h = renew ? P.hire : tile.hire; if (!h) return;
+    let rate = h.rate, why = '';
+    if (renew) { const merit = hireScore() - h.score0;
+      if (merit > 0) { rate = Math.max(h.rate + 1, Math.round(h.rate * (1 + .1 * Math.min(merit, 5)))); why = h.name + ' stood by you through ' + merit + ' big moment' + (merit > 1 ? 's' : '') + ' and has earned a raise: ' + rate + ' gold per tile (was ' + h.rate + ').'; }
+      else { rate = Math.max(1, Math.round(h.rate * .85)); why = 'A quiet stretch with no bosses or big finds, so ' + h.name + ' will take less: ' + rate + ' gold per tile (was ' + h.rate + ').'; } }
+    springOpen = true; const box = $('hireBox'); $('hireAsk').style.display = 'flex';
+    let html = '<h2 style="color:#ffd23a">' + (renew ? 'WAGES DUE' : 'HIRE ' + h.name.toUpperCase()) + '</h2><div style="font-size:15px"><b>' + h.name + '</b> · ' + h.cls + '</div>' +
+      '<div class="note" style="margin:6px 0">HP ' + h.max + ' · Attack ' + h.atk + ' · Defense ' + h.def + '<br>' + (renew ? why : 'Fights beside you in battle and takes some hits. Wages are paid up front for the tiles you agree to walk; ask again when they run out.') + '</div>' +
+      '<div class="note" style="margin:0 0 6px">You have <b style="color:#ffd23a">' + P.gold + '</b> gold. Rate: <b>' + rate + '</b> gold per tile.</div>';
+    HIRE_PLANS.forEach((p, i) => { const tot = planTotal(rate, p), per = (tot / p[0]).toFixed(1).replace(/\.0$/, ''), off = P.gold < tot && 'Need ' + tot + ' gold';
+      html += '<div class="rec"><span class="grow"><b>' + p[0] + ' tiles</b><br>' + per + ' gold per tile' + (p[1] ? ' (' + Math.round(p[1] * 100) + '% off)' : '') + '</span><button class="act buy' + (off ? ' off' : '') + '" data-hp="' + i + '">' + tot + ' gold<small>' + (off || 'hire') + '</small></button></div>'; });
+    html += '<div style="margin-top:8px"><button class="act" id="hireNo">' + (renew ? 'Let them go' : 'Not now') + '</button></div>';
+    box.innerHTML = html;
+    hireHandle = (e) => {
+      const done = () => { springOpen = false; $('hireAsk').style.display = 'none'; hudDirty = true; };
+      if (e.target.closest('#hireNo')) { done(); if (renew) { toast(h.name + ' thanks you and goes on their way'); P.hire = null; } return; }
+      const b = e.target.closest('[data-hp]'); if (!b || b.classList.contains('off')) return; const p = HIRE_PLANS[+b.dataset.hp], tot = planTotal(rate, p); if (P.gold < tot) return;
+      P.gold -= tot; stats.wages = (stats.wages || 0) + tot;
+      if (renew) { h.rate = rate; h.left = p[0]; h.score0 = hireScore(); toast(h.name + ' is paid ' + tot + ' gold for ' + p[0] + more()); }
+      else { if (P.hire) return done(); P.hire = { name: h.name, cls: h.cls, atk: h.atk, def: h.def, hp: h.hp, max: h.max, rate, left: p[0], score0: hireScore() }; tile.type = 'grass'; tile.hire = null; hirePos = null; toast(h.name + ' joins you for ' + p[0] + ' tiles'); }
+      done();
+    };
+    function more() { return ' more tiles'; }
+  }
+  if (!TEST) $('hireBox').onclick = (e) => { if (hireHandle) hireHandle(e); };
+  let hirePos = null;
+  function drawHuman(bx, by, cls, face, hop) {
+    const pal = cls === 'Shieldbearer' ? ['#3a5ab8', '#8aa8ff', '#c8c8d8'] : cls === 'Scout' ? ['#2e8a48', '#7ad890', '#7a5a3a'] : ['#b8382e', '#ff8a7a', '#c8c8d8'];
+    const x = Math.round(bx), y = Math.round(by - (hop || 0)), f = face >= 0 ? 1 : -1;
+    ell(bx, by, 6, 2, 'rgba(0,20,8,0.45)');
+    px(x - 3, y - 6, 3, 6, '#3a2a22'); px(x + 1, y - 6, 3, 6, '#3a2a22');
+    px(x - 4, y - 14, 9, 8, pal[0]); px(x - 4, y - 14, 9, 1, pal[1]); px(x - 4, y - 8, 9, 1, '#2a1a10');
+    px(x - 3, y - 19, 7, 5, '#f0c8a0'); px(x - 4, y - 21, 9, 3, pal[2]); px(x + (f > 0 ? 1 : -2), y - 17, 1, 1, '#101010');
+    if (cls === 'Shieldbearer') { px(x + (f > 0 ? -7 : 5), y - 14, 3, 7, pal[1]); px(x + (f > 0 ? -7 : 5), y - 14, 3, 1, '#fff'); } else px(x + (f > 0 ? 5 : -6), y - 17, 1, 10, '#d8d8e8');
+  }
+  function drawHired(ox, oy) {
+    const h = P.hire, bx = hirePos.x + ox, by = hirePos.y + oy, mvg = Math.abs(hirePos.tx - hirePos.x) + Math.abs(hirePos.ty - hirePos.y) > 1, hop = mvg ? Math.round(Math.abs(Math.sin(gt * 10)) * 2) : 0;
+    drawHuman(bx, by, h.cls, hirePos.face, hop); text(h.name, bx, by - 30, '#ffe9a0', .7);
+    if (h.hp < h.max) { px(bx - 8, by + 3, 16, 3, '#000'); px(bx - 7, by + 4, Math.max(1, Math.round(14 * h.hp / h.max)), 1, '#7dff8f'); }
+  }
+  function hireTick(dt) {
+    if (!P.hire) { hirePos = null; return; }
+    const tx = guy.x + 13, ty = guy.y; if (!hirePos || Math.hypot(hirePos.x - tx, hirePos.y - ty) > 90) hirePos = { x: tx, y: ty, face: 1, tx, ty };
+    hirePos.tx = tx; hirePos.ty = ty; const k = Math.min(1, dt * 3.5); if (Math.abs(tx - hirePos.x) > 1) hirePos.face = tx > hirePos.x ? 1 : -1; hirePos.x += (tx - hirePos.x) * k; hirePos.y += (ty - hirePos.y) * k;
+  }
+  // blacksmith: mild, paid upgrades (up to +3 per item)
+  let smithOpen = false;
+  const SMITH_MAX = 3;
+  const smithStat = (g) => g.slot === 'weapon' ? ['atk', 1] : g.slot === 'ring' ? (g.atk ? ['atk', 1] : g.def ? ['def', 1] : g.hp ? ['hp', 2] : g.mp ? ['mp', 2] : ['crit', 1]) : ['def', 1];
+  const smithCost = (g) => Math.round((18 + gpower(g) * 3) * (1 + (g.up || 0) * .7));
+  function smithItems() { const out = []; for (const [sl, lab] of SLOTS) if (P.eq[sl]) out.push({ g: P.eq[sl], where: 'Worn: ' + lab, ref: 'eq:' + sl }); P.bag.forEach((e, i) => { if (typeof e !== 'string') out.push({ g: e, where: 'In your bag', ref: 'bag:' + i }); }); return out; }
+  function openSmith() { if (TEST || B || S.state !== 'play') return; smithOpen = true; springOpen = true; $('smith').style.display = 'flex'; renderSmith(); }
+  function closeSmith() { smithOpen = false; springOpen = false; $('smith').style.display = 'none'; hudDirty = true; }
+  function renderSmith() {
+    if (TEST || !smithOpen) return;
+    let h = '<h2 style="color:#ff9a3a;letter-spacing:3px">BLACKSMITH</h2><div class="note" style="margin:0 0 8px">Gold <b style="color:#ffd23a">' + P.gold + '</b> · Each piece can be reforged up to +' + SMITH_MAX + ', a little stronger each time.</div>';
+    const items = smithItems();
+    items.forEach((it) => { const g = it.g, up = g.up || 0, [st, amt] = smithStat(g), c = smithCost(g), off = up >= SMITH_MAX ? 'Fully reforged' : P.gold < c && 'Need ' + c + ' gold';
+      h += '<div class="rec"><img src="' + gearIconURL(g) + '" style="width:36px;height:36px;image-rendering:pixelated"><span class="grow"><b style="color:' + g.col + '">' + g.name + '</b> <span style="opacity:.7">· ' + it.where + '</span><br>' + gearDesc(g) + '</span><button class="act buy' + (off ? ' off' : '') + '" data-su="' + it.ref + '">' + (up >= SMITH_MAX ? 'Maxed' : '+' + amt + ' ' + st.toUpperCase()) + '<small>' + (off || c + ' gold') + '</small></button></div>'; });
+    if (!items.length) h += '<div class="note">You have no gear to reforge.</div>';
+    h += '<div style="text-align:center;margin-top:8px"><button class="act" id="smClose">Leave</button></div>';
+    $('smithBox').innerHTML = h;
+  }
+  function smithUp(ref) {
+    const it = smithItems().find(x => x.ref === ref); if (!it) return false; const g = it.g, up = g.up || 0, c = smithCost(g), [st, amt] = smithStat(g);
+    if (up >= SMITH_MAX || P.gold < c) return false;
+    P.gold -= c; g[st] = (g[st] || 0) + amt; g.up = up + 1; g.name = g.name.replace(/ \+\d+$/, '') + ' +' + g.up; clampVitals(); hudDirty = true; return true;
+  }
+  if (!TEST) $('smithBox').onclick = (e) => { if (e.target.closest('#smClose')) return closeSmith(); const b = e.target.closest('[data-su]'); if (b && !b.classList.contains('off')) { if (smithUp(b.dataset.su)) { toast('Reforged! The gear feels sturdier'); renderSmith(); } } };
   // ---------- shrine warping: the map zooms out, reachable shrines glow, click one to go (Esc, right-click or Cancel to stay) ----------
   let warpMode = null, warpScale = null;
   const shrineList = () => { if (S.cave) return []; const out = []; for (const t of tiles.values()) if (t.type === 'shrine' && !(t.q === guy.q && t.r === guy.r)) out.push({ t, d: hd(t.q - guy.q, t.r - guy.r) }); return out.sort((a, b) => a.d - b.d); };
@@ -3751,7 +3855,7 @@
     if (e.key === 'Escape') { if (inspectOpen) closeInspect(); else if (shopOpen) closeShop(); if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
   // left or right click on the dim area outside a window closes it (battle, name, book choice, awaken, game-over and update windows stay open)
-  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), hall: () => hallOpen && closeHall(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
+  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), hall: () => hallOpen && closeHall(), smith: () => smithOpen && closeSmith(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
     let downEl = null; window.addEventListener('mousedown', (e) => { downEl = e.target; }, true);
     const out = (e) => { const el = e.target; if (el && el.classList && el.classList.contains('modal') && OUT[el.id] && (e.type === 'contextmenu' || downEl === el)) { OUT[el.id](); } };
     window.addEventListener('click', out); window.addEventListener('contextmenu', out); }
@@ -3785,7 +3889,7 @@
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, gainXp, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
