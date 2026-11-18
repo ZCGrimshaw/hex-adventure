@@ -508,7 +508,21 @@
   const BLOCK = { wall: 1, bear: 1, chasm: 1, burning: 1, blaze: 1, ice: 1, vault: 1, cave: 1, boulder: 1, cliff: 1, lake: 1, cdoor: 1 };
   const blocked = (t) => !!t && !!BLOCK[t.type];
   // blocked hexes (cave, wall, chasm...) are dead ends: the hexes behind them stay out of reach until you open them or find another way round
-  const isCand = (q, r) => !tiles.has(key(q, r)) && DIRS.some(([a, b]) => { const t = tiles.get(key(q + a, r + b)); return !!t && !blocked(t); });
+  // ...and the unrevealed hexes within 2 of a blocker stay sealed, so you cannot simply walk round it: open it with the right item
+  // (torch, bomb, bridge...) or explore another direction. If every way forward is sealed, the seal loosens so a run can never get stuck.
+  const LOCKR = 2;
+  let lockLvl = LOCKR, lockDirty = true;
+  const nearBlock = (q, r, R) => { for (let dq = -R; dq <= R; dq++) for (let dr = Math.max(-R, -dq - R); dr <= Math.min(R, -dq + R); dr++) { if (!dq && !dr) continue; if (blocked(tiles.get(key(q + dq, r + dr)))) return true; } return false; };
+  const candAt = (q, r, R) => !tiles.has(key(q, r)) && (!R || !nearBlock(q, r, R)) && DIRS.some(([a, b]) => { const t = tiles.get(key(q + a, r + b)); return !!t && !blocked(t); });
+  function lockCheck() {   // only hexes you can actually walk to count: flood out from where you stand
+    lockDirty = false; const st = tiles.get(key(guy.q, guy.r)); if (!st) { lockLvl = LOCKR; return; }
+    const seen = new Set([key(st.q, st.r)]), reach = [st];
+    for (let i = 0; i < reach.length; i++) { const t = reach[i]; for (const [a, b] of DIRS) { const k = key(t.q + a, t.r + b), n = tiles.get(k); if (n && !blocked(n) && !seen.has(k)) { seen.add(k); reach.push(n); } } }
+    for (let R = LOCKR; R > 0; R--) { for (const t of reach) for (const [a, b] of DIRS) if (candAt(t.q + a, t.r + b, R)) { lockLvl = R; return; } }
+    lockLvl = 0;
+  }
+  let lockAt = '';
+  const isCand = (q, r) => { const at = guy.q + ',' + guy.r + (S && S.cave ? 'c' : ''); if (lockDirty || at !== lockAt) { lockAt = at; lockCheck(); } return candAt(q, r, lockLvl); };
   const HINT = {
     wall: 'A solid rock wall. A bomb might open it... (craft: flint + stone + iron ore)',
     bear: 'The bear growls and will not budge. It looks hungry... maybe a fish?',
@@ -622,7 +636,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 52;
+  const BUILD = 53;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -910,7 +924,7 @@
     toast(m.name + ' crawls out of the mist...');
   }
   function reveal(q, r, quiet) {
-    if (!isCand(q, r)) return null;
+    if (!isCand(q, r)) return null; lockDirty = true;
     if (S.cave) return caveReveal(q, r, quiet);
     if (mistCap()) { if (!quiet) toast('A dark mist blocks the way. Defeat ' + S.boss.m.name + ' to push further'); return null; }
     const t = genTile(q, r);
@@ -1077,10 +1091,17 @@
     $('spYes').onclick = () => { if (!hurt) { toast('You are already at full strength. Save it for later'); return; } drinkSpring(t); closeSpring(); };
     $('spNo').onclick = () => { closeSpring(); toast('You mark the spring. Return any time to heal'); };
   }
+  let autoEq = true; try { autoEq = localStorage.getItem('hexautoeq') !== '0'; } catch (e) {}
+  function autoEquip(t) {
+    if (!autoEq || !t || !t.loot || B) return; let any = true, n = 0;
+    while (any && n < 9) { any = false; n++;
+      for (let i = 0; i < t.loot.length; i++) { const g = t.loot[i]; if (g.kind !== 'gear') continue; const sl = slotFor(g); if (gpower(g) > gpower(P.eq[sl])) { equipFrom(t, i); toast('Auto-equipped ' + g.name); any = true; break; } } }
+    if (!t.loot.length) t.grave = false;
+  }
   function onEnter(t) {
     const d = S.revealed, mh = maxHP();
     if (t.type === 'trap' && !t.sprung) {
-      t.sprung = true; t.type = 'grass'; stats.traps++;
+      t.sprung = true; t.sprungAt = gt; sprungL.push(t); stats.traps++;
       const dmg = Math.max(0, Math.min(P.hp - 1, Math.round((Math.round(mh * 0.15) + Math.floor(d / 13)) * (1 - .5 * sk('trap'))))); P.hp -= dmg; stats.taken += dmg;
       toast('A hidden spike trap! -' + dmg + ' HP'); guy.target = null; guy.pending = null; flash = .25;
     }
@@ -1120,6 +1141,24 @@
     if (!t || S.state !== 'play' || B) return A;
     const full = (n) => bagUsed() + (n || 1) > P.bagCap && 'Bag full';
     const gather = (label, sub, id, fn) => A.push({ label, sub, off: full(isize(id)), run() { giveItem(id); fn(); toast('+1 ' + ITEMS[id].name); } });
+    // eat or drink right here, without it going in your bag
+    const eat = (label, id, fn) => { const drink = id === 'water', need = drink ? P.mp < maxMP() : P.hp < maxHP() || (id === 'shroom' && P.mp < maxMP());
+      A.push({ label, sub: drink ? 'magic now, skips your bag' : 'health now, skips your bag', better: need && P.hp < maxHP() * .6, off: !need && (drink ? 'Your magic is already full' : 'You are not hungry: your health is full'), run() { fn(); toast(eatNow(id)); } }); };
+    const wleft = () => { if (t.water === undefined) t.water = WATERCAP[t.type]; return t.water; };
+    const water = () => { if (wleft() > 0) { gather('Draw water', t.water + ' left · magic, or douse fire', 'water', () => { t.water--; t.waterAt = gt + 90; }); eat('Drink here', 'water', () => { t.water--; t.waterAt = gt + 90; }); }
+      else A.push({ label: 'Draw water', sub: 'refills slowly', off: 'Drawn dry for now: it refills slowly', run() {} }); };
+    const plain = !t.loot.length && (t.type === 'grass' || t.type === 'dirt' || t.type === 'rubble' || t.type === 'cfloor') && !(S.cp === t);
+    if (plain) { const w = countOf('wood'), lit = countOf('flint') > 0 ? 'flint' : countOf('torch') > 0 ? 'torch' : null;
+      A.push({ label: 'Build a campfire', sub: '2 wood + flint (or a torch) · cook fish, rest, keeps for a while', off: (w < 2 || !lit) && 'Needs 2 wood and flint (or a torch)', run() {
+        const take = (k) => P.bag.splice(P.bag.indexOf(k), 1); take('wood'); take('wood'); take(lit);
+        t.type = 'campfire'; t.fireUntil = gt + 240; t.rested = false; const p = toWorld(t.q, t.r); burst(p.x, p.y - 8, 18, FIRE, 30, -40, 10); toast('You build a crackling campfire'); } }); }
+    if (t.type === 'campfire') {
+      const fish = countOf('fish'), mins = Math.max(1, Math.round((t.fireUntil - gt) / 60));
+      A.push({ label: 'Cook fish', sub: fish ? 'cook all ' + fish + ' raw fish' : 'no raw fish in your bag', better: fish > 0, off: !fish && 'You have no raw fish', run() {
+        let c = 0; P.bag = P.bag.map(x => x === 'fish' ? (c++, 'cooked') : x); toast('You cook ' + c + ' fish over the fire'); } });
+      A.push({ label: 'Rest by the fire', sub: t.rested ? 'already rested here' : '+40% health and magic, once per fire', better: !t.rested && P.hp < maxHP() * .7, off: t.rested ? 'You already rested at this fire' : P.hp >= maxHP() && P.mp >= maxMP() && 'Already at full strength', run() {
+        t.rested = true; P.hp = Math.min(maxHP(), P.hp + Math.round(maxHP() * .4)); P.mp = Math.min(maxMP(), P.mp + Math.round(maxMP() * .4)); toast('You warm up by the fire (about ' + mins + ' min of fire left)'); } });
+    }
     if (t.type === 'brazier' && !t.lit && S.boss) {
       const hasT = countOf('torch') > 0, hasWF = countOf('wood') > 0 && countOf('flint') > 0;
       A.push({ label: 'Light brazier', sub: 'torch, or wood + flint', better: hasT || hasWF, off: !(hasT || hasWF) && 'Needs a torch, or wood + flint', run() {
@@ -1141,8 +1180,8 @@
     if (t.type === 'spring') { const dry = !!t.dry; A.push({ label: 'Drink from the spring', sub: dry ? 'run dry' : 'full health and magic, one use only', better: !dry && springHurt(), off: dry ? 'The spring has run dry' : !springHurt() && 'You are already at full strength', run() { drinkSpring(t); } }); }
     if (t.type === 'cavelit') A.push({ label: 'Enter the cave', sub: 'a temporary underground world', hot: true, run() { enterCave(t); } });
     if (t.type === 'caveexit') A.push({ label: 'Leave the cave', sub: (S.cave && S.cave.guard && S.cave.guard.hp > 0 && mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'the guardian still lurks! ' : '') + 'the cave collapses behind you', hot: true, run() { exitCave(); } });
-    if (t.type === 'shrooms') gather('Pick glowcap', t.units + ' left', 'shroom', () => { if (--t.units <= 0) t.type = 'cfloor'; });
-    if (t.type === 'pool') { if (t.fish > 0) gather('Catch blind fish', t.fish + ' left', 'fish', () => { t.fish--; }); gather('Draw water', 'magic, or douse fire', 'water', () => {}); }
+    if (t.type === 'shrooms') { const f = () => { if (--t.units <= 0) t.type = 'cfloor'; }; gather('Pick glowcap', t.units + ' left', 'shroom', f); eat('Eat a glowcap here', 'shroom', f); }
+    if (t.type === 'pool') { if (t.fish > 0) { gather('Catch blind fish', t.fish + ' left', 'fish', () => { t.fish--; }); eat('Catch and eat a fish', 'fish', () => { t.fish--; }); } water(); }
     if (t.type === 'gemvein') {
       const pk = countOf('pickaxe') > 0;
       A.push({ label: pk ? 'Chip out space gem' : 'Pry the gem loose', sub: pk ? 'your pickaxe makes it safe' : 'risky by hand: it might crack', better: true, run() {
@@ -1159,22 +1198,28 @@
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
     if (t.type === 'tree') gather('Chop tree', '+1 wood', 'wood', () => { t.type = 'grass'; t.stump = true; regrow('tree', 75); });
-    if (t.type === 'bush') gather('Pick berries', t.units + ' left', 'berries', () => { if (--t.units <= 0) { t.type = 'grass'; regrow('bush', 60); } });
+    if (t.type === 'bush') { const f = () => { if (--t.units <= 0) { t.type = 'grass'; regrow('bush', 60); } }; gather('Pick berries', t.units + ' left', 'berries', f); eat('Eat berries here', 'berries', f); }
     if (t.type === 'stone') gather('Break stone', t.units + ' left', 'stone', () => { if (--t.units <= 0) t.type = 'grass'; });
     if (t.type === 'vines') gather('Cut vines', t.units + ' left', 'vine', () => { if (--t.units <= 0) { t.type = 'grass'; t.stump = true; regrow('vines', 90); } });
     if (t.type === 'ore') gather('Mine iron ore', t.units + ' left', 'iron', () => { if (--t.units <= 0) { t.type = 'rubble'; regrow('ore', 120); } });
     if (t.type === 'flint') gather('Take flint', t.units + ' left', 'flint', () => { if (--t.units <= 0) { t.type = 'rubble'; regrow('flint', 100); } });
     if (t.type === 'crystal') gather('Take crystal', t.units + ' left', 'crystal', () => { if (--t.units <= 0) { t.type = 'rubble'; regrow('crystal', 150); } });
     if (t.type === 'river') {
-      if (t.fish > 0) gather('Catch fish', t.fish + ' left', 'fish', () => { t.fish--; t.fishAt = gt + 60; });
-      gather('Draw water', 'magic, or douse fire', 'water', () => {});
+      if (t.fish > 0) { const f = () => { t.fish--; t.fishAt = gt + 60; }; gather('Catch fish', t.fish + ' left', 'fish', f); eat('Catch and eat a fish', 'fish', f); }
+      water();
     }
     if (t.type === 'hireling' && t.hire) { const hh = t.hire; A.push({ label: 'Talk to ' + hh.name, sub: hh.cls + ' · HP ' + hh.max + ' ATK ' + hh.atk + ' DEF ' + hh.def + ' · ' + hh.rate + ' gold per tile', hot: true, off: P.hire && 'You already employ ' + P.hire.name, run() { askHire('new', t); } }); }
     if (t.type === 'smith') A.push({ label: 'Visit the blacksmith', sub: 'reforge gear: up to +' + SMITH_MAX + ' each', hot: true, run() { openSmith(); } });
     if (t.type === 'merchant') A.push({ label: 'Open shop', sub: t.stock.length + ' for sale · sell your spare items', hot: true, run() { openShop(); } });
-    t.loot.slice(0, 4).forEach((it) => {
+    const gearL = t.loot.filter(x => x.kind === 'gear'), gearN = gearL.length, gp = (g) => { const cur = g.slot === 'ring' ? (gpower(P.eq.ring1) <= gpower(P.eq.ring2) ? P.eq.ring1 : P.eq.ring2) : P.eq[g.slot]; return gpower(g) - gpower(cur); };
+    const bestG = gearN ? gearL.reduce((a, b) => gp(b) > gp(a) ? b : a) : null;
+    const browse = gearN > 1 && !TEST;
+    if (browse) A.push({ label: 'Look through gear (' + gearN + ')', sub: 'flip through every piece here and compare', hot: true, run() { inspectGear(bestG, gearL); } });
+    [...t.loot.filter(x => x.kind !== 'gear').slice(0, 4), ...gearL].forEach((it) => {
       const drop = () => { t.loot.splice(t.loot.indexOf(it), 1); if (!t.loot.length) t.grave = false; };
-      if (it.kind === 'item') A.push({ label: 'Take ' + ITEMS[it.id].name, sub: ITEMS[it.id].d, off: full(isize(it.id)), run() { giveItem(it.id); drop(); } });
+      if (it.kind === 'item') { A.push({ label: 'Take ' + ITEMS[it.id].name, sub: ITEMS[it.id].d, off: full(isize(it.id)), run() { giveItem(it.id); drop(); } });
+        if (EDIBLE[it.id]) eat((it.id === 'water' ? 'Drink ' : 'Eat ') + ITEMS[it.id].name.toLowerCase() + ' here', it.id, drop); }
+      else if (browse && it !== bestG) return;
       else {
         const cur = it.slot === 'ring' ? (gpower(P.eq.ring1) <= gpower(P.eq.ring2) ? P.eq.ring1 : P.eq.ring2) : P.eq[it.slot];
         A.push({ label: 'Equip ' + it.name, sub: gearDesc(it) + (cur ? ' (now: ' + gearDesc(cur) + ')' : ''), better: gpower(it) > gpower(cur), insp: it, list: t.loot.filter(x => x.kind === 'gear'), run() { equipFrom(t, t.loot.indexOf(it)); if (!t.loot.length) t.grave = false; } });
@@ -1183,7 +1228,10 @@
     });
     return A;
   }
-  function runAction(a) { if (!a || B || S.state !== 'play') return; if (a.off) { toast(a.off); return; } bagSel = null; a.run(); hudDirty = true; }
+  const EDIBLE = { berries: 1, meat: 1, fish: 1, cooked: 1, water: 1, shroom: 1, stew: 1 };
+  const WATERCAP = { river: 4, pool: 2 };
+  function eatNow(id) { P.bag.push(id); return useItem(P.bag.length - 1, false) || ''; }
+  function runAction(a) { if (!a || B || S.state !== 'play') return; if (a.off) { toast(a.off); return; } bagSel = null; a.run(); hudDirty = true; lockDirty = true; }
 
   // ---------- puzzle helpers ----------
   // animals that can follow you: they must match to merge into one stronger animal, and they need feeding
@@ -1259,6 +1307,9 @@
     for (const t of [...tiles.values()]) {
       if (t.regrow && gt > t.regrow.at && (t.type === 'grass' || t.type === 'rubble') && !monAt(t.q, t.r) && !(t.q === guy.q && t.r === guy.r)) { t.type = t.regrow.type; t.units = t.type === 'crystal' ? 1 : 2; t.stump = false; t.regrow = null; t.born = gt; }
       if (t.type === 'river' && t.fish < 2 && gt > (t.fishAt || 0)) { t.fish++; t.fishAt = gt + 60; }
+      if (t.type === 'trap' && t.sprung && gt > (t.sprungAt || 0) + 3) { t.type = 'grass'; t.sprung = false; }
+      if ((t.type === 'river' || t.type === 'pool') && t.water !== undefined && t.water < WATERCAP[t.type] && gt > (t.waterAt || 0)) { t.water++; t.waterAt = gt + 90; }
+      if (t.type === 'campfire' && gt > (t.fireUntil || 0)) { t.type = 'grass'; t.ash = true; }
       if (t.type === 'blaze' && gt > t.out) { t.type = 'grass'; t.ash = true; }
       else if (t.type === 'burning' && gt > t.burnUntil) { t.type = 'grass'; t.ash = true; toast('A fire burned out. Whoever was trapped there is gone...'); }
       if (t.type !== 'burning' && t.type !== 'blaze') continue;
@@ -1795,6 +1846,7 @@
     stats.steps++; if (P.hire) P.hire.left--; petHunger();
     onEnter(curTile()); hudDirty = true;
     if (!B && S.state === 'play') roamTick();   // monsters take one tile for every tile you take
+    warmScan(); lockDirty = true;
   }
   function walkInstant(q, r) { // test helper
     guy.target = { q, r }; let n = 0;
@@ -1827,8 +1879,12 @@
     }
   }
 
+  let autoT = 0, warmT = 0; const sprungL = [];
   function update(dt) {
     if (updBlock) return;
+    if ((warmT += dt) > 2) { warmT = 0; warmScan(); }   // also after loading a save, before your first step
+    if ((autoT += dt) > .25) { autoT = 0;
+      for (let i = sprungL.length - 1; i >= 0; i--) { const t = sprungL[i]; if (gt > (t.sprungAt || 0) + 3) { if (t.type === 'trap') { t.type = 'grass'; t.sprung = false; } sprungL.splice(i, 1); } } if (S.state === 'play' && !B && !guy.mv && !shopOpen && !inspectOpen) { const ct = curTile(); if (ct && ct.loot.some(x => x.kind === 'gear')) autoEquip(ct); } }
     if (P.hire && P.hire.left <= 0 && !springOpen && !B && S.state === 'play' && !guy.mv && !TEST) askHire('renew');
     if (S.state === 'play' && !B && !stashOpen && !craftOpen && !skillsOpen && !hallOpen && !menuOpen) {
       if (!guy.mv) chooseMove();
@@ -2007,7 +2063,8 @@
       case 'stone': case 'wall': case 'vault': case 'boulder': case 'ore': case 'flint': case 'cave': case 'cavelit': case 'cliff': case 'cliffup': return 'stone';
       case 'merchant': case 'rubble': case 'smith': return 'dirt';
       case 'hireling': return 'grass';
-      case 'trap': return 'grass';
+      case 'trap': return t.sprung ? 'dirt' : 'grass';
+      case 'campfire': return 'dirt';
       case 'shrine': return 'marble';
       case 'burning': case 'blaze': return 'burnt';
       case 'ice': case 'lakeice': return 'ice';
@@ -2265,6 +2322,7 @@
   function drawObject(t, cx, cy) {
     const ty = t.type, vr = varOf(t);
     if (t.ash && ty === 'grass') for (let i = 0; i < 8; i++) px(cx + (hash(t.q * 7 + i) - .5) * 40, cy + (hash(t.r * 5 + i + 3) - .5) * 18, 2, 1, '#1a120e');
+    if (t.ash && t.type === 'grass') { ell(cx, cy + 1, 7, 3, '#2a2522'); ell(cx, cy + 1, 4, 1.6, '#4a423c'); }
     if (t.stump) ob('stump', 12, 10, 6, 8, fStump, cx - 12, cy + 1);
     switch (ty) {
       case 'tree': ob('tree' + vr, 40, 48, 20, 44, fTree(vr), cx - 10, cy + 2, undefined, Math.round(Math.sin(gt * 1.3 + t.q * 1.7 + t.r) * .8)); break;
@@ -2282,7 +2340,7 @@
       case 'mystery': { const oy = Math.round(Math.sin(gt * 3) * 2), c = Math.sin(gt * 5) > 0 ? '#ffe14a' : '#ffffff';
         glow(cx, cy - 14 + oy, 16, '#ffe14a', .35);
         for (let y = 0; y < 7; y++) for (let x = 0; x < 5; x++) if (QM[y][x] === '1') { px(cx - 5 + x * 2 + 1, cy - 22 + y * 2 + oy + 1, 2, 2, '#000'); px(cx - 5 + x * 2, cy - 22 + y * 2 + oy, 2, 2, c); } } break;
-      case 'trap': break;
+      case 'trap': if (t.sprung) { const a = clamp(3 - (gt - (t.sprungAt || 0)), 0, 1); G.globalAlpha = a; ob('spikes', 32, 14, 16, 10, fSpikes, cx, cy + 2); G.globalAlpha = 1; } break;
       case 'hireling': if (t.hire) { drawHuman(cx, cy + 4, t.hire.cls, 1, 0); const b = Math.sin(gt * 4) * 2; glow(cx, cy - 36 + b, 12, '#ffe14a', .35); text('!', cx, cy - 44 + b, '#ffe14a', 1.6); } break;
       case 'smith': ob('smith', 74, 62, 32, 56, () => {}, cx, cy + 4); glow(cx + 17, cy - 14, 24, '#ff8a2a', .4 + .15 * Math.sin(gt * 9)); break;
       case 'merchant': ob('tent', 46, 36, 23, 33, fTent, cx, cy + 3); if (Math.floor(gt * 2) % 5 === 0) px(cx + 8, cy - 8, 1, 1, '#ffffff'); break;
@@ -2335,6 +2393,10 @@
           if (S.boss.open) glow(cx, cy - 10, 30, '#ff3a2a', .5 + .2 * Math.sin(gt * 3)); else glow(cx, cy - 12, 22, '#8a3aff', .25); } } break;
       case 'sigil': ob('sigil', 40, 22, 20, 14, fSigil, cx, cy + 2); { const c = t.lit ? (Math.sin(gt * 4) > 0 ? '#e8a8ff' : '#b060ff') : '#3a3046';
         px(cx - 3, cy - 3, 7, 1, c); px(cx, cy - 5, 1, 5, c); if (t.lit) { glow(cx, cy - 3, 22, '#c878ff', .45); if (rnd() < .2) particles.push({ x: toWorld(t.q, t.r).x + (rnd() - .5) * 10, y: toWorld(t.q, t.r).y - 4, vx: 0, vy: -14, life: 1, max: 1, col: '#e8a8ff', s: 1, g: 0 }); } } break;
+      case 'campfire': { const left = (t.fireUntil || 0) - gt, k = clamp(left / 40, .35, 1), fx0 = cx + 12, fy0 = cy + 3;   // set to one side so it shows while you stand on the hex
+        for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; ell(fx0 + Math.cos(a) * 8, fy0 + Math.sin(a) * 3.5, 2, 1, i % 2 ? '#6a6e78' : '#9a9ea8'); }
+        px(fx0 - 7, fy0 - 2, 14, 2, '#6b4423'); px(fx0 - 6, fy0 - 3, 12, 1, '#8e5c32'); px(fx0 - 3, fy0 - 4, 6, 3, '#5a3818');
+        fFlame(fx0, fy0 - 3, 1.15 * k, FIRE); glow(fx0, fy0 - 8, 34 * k, '#ff8a2a', .55 * k); break; }
       case 'brazier': ob('brazier', 20, 22, 10, 18, fBrazier, cx, cy + 3); if (t.lit) { fFlame(cx, cy - 15, 1.1, FIRE); glow(cx, cy - 18, 26, '#ff8a2a', .55); } break;
     }
     if (t.grave) ob('grave', 18, 18, 9, 15, fGrave, cx + 12, cy + 2);
@@ -2386,16 +2448,29 @@
   const LV = (() => { const l = Math.hypot(-.5, -.72, .48); return [-.5 / l, -.72 / l, .48 / l]; })();
   const HV = (() => { const x = LV[0], y = LV[1], z = LV[2] + 1, l = Math.hypot(x, y, z); return [x / l, y / l, z / l]; })();
   const ND = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]], ND4 = ND.slice(0, 4), ND2 = ND.concat([[2, 0], [-2, 0], [0, 2], [0, -2]]);
-  function lpRender(spec, m) {
+  function lpRender(spec, m) { const g = lpRenderG(spec, m); let r; do r = g.next(); while (!r.done); return r.value; }
+  // the renderer is a generator so big sprites (dragons, bosses) can be built a few rows at a time in spare frames
+  function* lpRenderG(spec, m) {
     const ss = 2, fs = spec.f || 1, mm = m * ss * fs, SW = Math.max(2, Math.ceil(spec.w * mm)), SH = Math.max(2, Math.ceil(spec.h * mm)), N = SW * SH, PR = spec.prims;
     const Z = new Float32Array(N).fill(-1e9), ID = new Int16Array(N).fill(-1), V = new Float32Array(N), SP = new Float32Array(N), NX = new Float32Array(N), NZ = new Float32Array(N), RV = new Float32Array(N).fill(-9);
     const RPS = PR.map(p => rampOf(p.c)), rg = spec.ring;
+    const RB = PR.map(p => p.a ? Math.hypot(p.rx, p.ry) : 0);   // quick bounding test per shape: skips most of the per-pixel maths
+    const UX = new Float32Array(N), UY = new Float32Array(N), UZ = new Float32Array(N);
+    // pass 1: find the nearest shape at each pixel (cheap); pass 2 shades only that winner (the costly lighting maths runs once per pixel)
     for (let py = 0; py < SH; py++) for (let px2 = 0; px2 < SW; px2++) {
       const X = (px2 + .5) / mm - spec.ax, Y = (py + .5) / mm - spec.ay, j = py * SW + px2;
       for (let k = 0; k < PR.length; k++) { const p = PR[k]; let dx = X - p.x, dy = Y - p.y;
+        if (RB[k] ? (dx > RB[k] || dx < -RB[k] || dy > RB[k] || dy < -RB[k]) : (dx > p.rx || dx < -p.rx || dy > p.ry || dy < -p.ry)) continue;
         if (p.a) { const c = Math.cos(-p.a), s = Math.sin(-p.a), t = dx * c - dy * s; dy = dx * s + dy * c; dx = t; }
         const e = p.p || 1.72, ux = dx / p.rx, uy = dy / p.ry, s = Math.pow(Math.abs(ux), e) + Math.pow(Math.abs(uy), e); if (s > 1) continue;
         const uz = Math.pow(1 - s, 1 / e), z = (p.z || 0) + p.rz * uz; if (z <= Z[j]) continue;
+        Z[j] = z; ID[j] = k; UX[j] = ux; UY[j] = uy; UZ[j] = uz;
+      }
+      if (px2 === SW - 1 && py % 6 === 5) yield;
+    }
+    for (let py = 0; py < SH; py++) for (let px2 = 0; px2 < SW; px2++) {
+      const X = (px2 + .5) / mm - spec.ax, Y = (py + .5) / mm - spec.ay, j = py * SW + px2, k = ID[j];
+      if (k >= 0) { const p = PR[k], e = p.p || 1.72, ux = UX[j], uy = UY[j], uz = UZ[j];
         let nx = e * Math.pow(Math.abs(ux), e - 1) * Math.sign(ux) / p.rx, ny = e * Math.pow(Math.abs(uy), e - 1) * Math.sign(uy) / p.ry, nz = e * Math.pow(uz, e - 1) / p.rz + 1e-4;
         if (p.a) { const c = Math.cos(p.a), s2 = Math.sin(p.a), t = nx * c - ny * s2; ny = nx * s2 + ny * c; nx = t; }
         let nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
@@ -2408,14 +2483,15 @@
         if (p.band) v += Math.sin(Y * p.band + fbm(X * .04, Y * .06, 3) * 5) * .13;
         if (p.em) v = v * .55 + p.em;
         v = Math.round(v * 6) / 6;
-        Z[j] = z; ID[j] = k; V[j] = v; NX[j] = nx; NZ[j] = nz;
+        V[j] = v; NX[j] = nx; NZ[j] = nz;
         SP[j] = Math.pow(Math.max(0, nx * HV[0] + ny * HV[1] + nz * HV[2]), p.sh || 24) * (p.spec || 0);
       }
       if (rg) { const c = Math.cos(-rg.a), s = Math.sin(-rg.a), xr = X * c - Y * s, yr = X * s + Y * c, rr2 = Math.hypot(xr / rg.rx, yr / rg.ry);
         if (rr2 >= rg.in && rr2 <= rg.out && (yr > 0 || ID[j] < 0)) RV[j] = .5 + .2 * Math.sin(rr2 * 70) + .12 * Math.sin(rr2 * 23) - (xr / rg.rx) * .3 - (yr < 0 ? .15 : 0); }
+      if (px2 === SW - 1 && py % 4 === 3) yield;
     }
     const c = mkC(SW, SH), g = c.getContext('2d'), im = g.createImageData(SW, SH), d = im.data, r = Math.max(1, Math.round(1.6 * mm)), rgR = rg ? rampOf(rg.c) : null;
-    for (let py = 0; py < SH; py++) for (let px2 = 0; px2 < SW; px2++) { const j = py * SW + px2, i = j * 4;
+    for (let py = 0; py < SH; py++) for (let px2 = 0; px2 < SW; px2++) { if (px2 === 0 && py % 6 === 5) yield; const j = py * SW + px2, i = j * 4;
       if (RV[j] > -9) { putc(d, i, rc(rgR, RV[j], 0)); continue; }
       if (ID[j] < 0) continue;
       let occ = 0; for (const [ox, oy] of ND) { const x2 = px2 + ox * r, y2 = py + oy * r; if (x2 < 0 || y2 < 0 || x2 >= SW || y2 >= SH) continue; const j2 = y2 * SW + x2; if (ID[j2] >= 0 && Z[j2] - Z[j] > 1.2) occ++; }
@@ -2426,10 +2502,10 @@
       if (v > -1) { const rim = Math.pow(1 - NZ[j], 2.5) * Math.max(0, NX[j] * .8 + .2); col = [lerp(col[0], 150, rim * .4), lerp(col[1], 200, rim * .4), lerp(col[2], 255, rim * .45)]; }
       putc(d, i, col);
     }
-    for (let py = 0; py < SH; py++) for (let px2 = 0; px2 < SW; px2++) { const j = py * SW + px2; if (ID[j] >= 0 || RV[j] > -9) continue;
+    for (let py = 0; py < SH; py++) for (let px2 = 0; px2 < SW; px2++) { if (px2 === 0 && py % 10 === 9) yield; const j = py * SW + px2; if (ID[j] >= 0 || RV[j] > -9) continue;
       let nb = -1; for (const [ox, oy] of ND2) { const x2 = px2 + ox, y2 = py + oy; if (x2 < 0 || y2 < 0 || x2 >= SW || y2 >= SH) continue; const j2 = y2 * SW + x2; if (ID[j2] >= 0) { nb = ID[j2]; break; } if (RV[j2] > -9) nb = -2; }
       if (nb === -1) continue; const b = nb === -2 ? rgR[0] : RPS[nb][0]; putc(d, j * 4, [b[0] * .5, b[1] * .5, b[2] * .5 + 6]); }
-    g.putImageData(im, 0, 0);
+    yield; g.putImageData(im, 0, 0);
     if (spec.post) spec.post(g, mm, spec);
     const o = mkC(Math.ceil(SW / ss), Math.ceil(SH / ss)), og = o.getContext('2d'); og.imageSmoothingQuality = 'high'; og.drawImage(c, 0, 0, o.width, o.height);
     o.m = m; o.ax = spec.ax * fs; o.ay = spec.ay * fs; o.uw = o.width / m; o.uh = o.height / m; o.ph = spec.ay * fs * (spec.top || .9); o.pw = spec.w * fs * .55;
@@ -2630,8 +2706,10 @@
       { x: 0, y: -32, rx: 6.6, ry: 4, rz: 6, c: cap, spec: .3 }, { x: 2.5, y: -30, rx: 6, ry: 1.1, rz: 5.4, z: 1.6, p: 4, c: cap });
     return { w: 42, h: 58, ax: 19, ay: 54, top: .68, prims: pr, post: eyesP([[-2.1, -27.4], [2.4, -27.4]], 1) };
   }
+  const heroKey = (fr, f) => { const e = P.eq; return 'H|' + [e.helmet && e.helmet.col, e.chest && e.chest.col, e.legs && e.legs.col, e.boots && e.boots.col, e.weapon && e.weapon.col, e.shield && e.shield.col, fr, f].join('|'); };
   function heroLP(fr, f) {
-    const e = P.eq, k = 'H|' + [e.helmet && e.helmet.col, e.chest && e.chest.col, e.legs && e.legs.col, e.boots && e.boots.col, e.weapon && e.weapon.col, e.shield && e.shield.col, fr, f].join('|');
+    const e = P.eq, k = heroKey(fr, f);
+    if (WARM.job && WARM.job.k === k) WARM.job = null;
     return texNow(k, (m) => { const s = heroSpec(e, fr); s.f = f; return lpRender(s, m); }, f > 1 ? bM : texM);
   }
   // monsters face left; a = main colour, b = second colour
@@ -2698,16 +2776,42 @@
   }
   const MONH = { blob: 13, beast: 18, bat: 18, human: 23, ghost: 24, dragon: 30, bear: 21, mimic: 15 };
   const BIGM = { Troll: 1.2, Golem: 1.2, Orc: 1.1, Rat: .8, Bat: .9 };
+  function* monBuildG(base, sc, mm) { const s = monSpec(base); s.f = (MONH[base.s] || 20) * (BIGM[base.n] || 1) / s.nh * sc; const c = yield* lpRenderG(s, mm); yield; c.float = s.float; c.w8 = silC(c, '#ffffff'); yield; c.ice = silC(c, '#9fe8ff'); return c; }
+  const monBuild = (base, sc) => (mm) => { const g = monBuildG(base, sc, mm); let r; do r = g.next(); while (!r.done); return r.value; };
   function monLP(m, sc, battle) {
-    const base = m.base, k = 'M|' + base.n + '|' + (m.roam ? 1 : 0) + '|' + sc + (battle ? '|B' : '');
-    const build = (mm) => { const s = monSpec(m.roam ? { ...base, c: base.c } : base); s.f = (MONH[base.s] || 20) * (BIGM[base.n] || 1) / s.nh * sc; const c = lpRender(s, mm); c.float = s.float; c.w8 = silC(c, '#ffffff'); c.ice = silC(c, '#9fe8ff'); return c; };
-    return battle ? texNow(k, build, bM) : TEST ? null : texGet(k, build);
+    const base = m.base;
+    if (battle) { const k = 'MB|' + base.n + '|' + sc; if (WARM.job && WARM.job.k === k && WARM.job.m === bM) WARM.job = null; return texNow(k, monBuild(base, sc), bM); }
+    const k = 'M|' + base.n + '|' + (m.roam ? 1 : 0) + '|' + sc;
+    return TEST ? null : texGet(k, monBuild(base, sc));
+  }
+  // ---- battle sprites are pre-built in spare frames, so a fight (even a dragon or a boss) opens without a hitch ----
+  const WARM = { q: [], job: null, worst: 0 };
+  function warmBattle(base, boss, near) {
+    if (TEST || !base) return; const sc = boss ? 2.5 : 2, k = 'MB|' + base.n + '|' + sc, e = TEX.get(k);
+    if ((e && e.m === bM) || (WARM.job && WARM.job.k === k) || WARM.q.some(x => x.k === k)) return;
+    WARM.q[boss || near ? 'unshift' : 'push']({ k, mk: (mm) => monBuildG(base, sc, mm) });
+  }
+  function warmScan() {   // what could you fight soon? monsters near you, this area's boss, and the monster types your depth is reaching
+    if (TEST || !S || S.state !== 'play') return;
+    for (const m of mons.values()) if (hd(m.q - guy.q, m.r - guy.r) <= 6) warmBattle(m.base, m.boss, true);
+    if (S.boss && S.boss.m) warmBattle(S.boss.m.base, true);
+    { const k = heroKey(0, 1.15), e = TEX.get(k); if (!(e && e.m === bM) && !(WARM.job && WARM.job.k === k) && !WARM.q.some(x => x.k === k)) { const eq = { ...P.eq }; WARM.q.unshift({ k, mk: (mm) => { const s = heroSpec(eq, 0); s.f = 1.15; return lpRenderG(s, mm); } }); } }   // your own battle sprite, rebuilt when your gear changes
+    const nb = BOSSES[S.bossN % BOSSES.length]; if (nb && S.revealed > (S.nextBoss || 0) - 25) warmBattle({ n: nb.n, s: nb.s, c: nb.c }, true);
+    for (let i = MON.length - 1; i >= 0; i--) { const b = MON[i]; if (b.d !== undefined && b.d <= S.revealed + 30) warmBattle(b, false); }   // the toughest types you can meet go first
+  }
+  function warmPump(ms) {
+    const t0 = performance.now();
+    while (performance.now() - t0 < ms) {
+      if (!WARM.job) { const n = WARM.q.shift(); if (!n) return; const e = TEX.get(n.k); if (e && e.m === bM) continue; WARM.job = { k: n.k, m: bM, g: n.mk(bM) }; }
+      const j = WARM.job; let r; const ts = performance.now(); try { r = j.g.next(); } catch (er) { console.error(er); WARM.job = null; continue; } const dt2 = performance.now() - ts; if (dt2 > WARM.worst) WARM.worst = dt2;
+      if (r.done) { if (WARM.job === j) TEX.set(j.k, { c: r.value, m: j.m }); WARM.job = null; }
+    }
   }
   function bearLP(sc, battle, kind) { kind = kind || 'bear'; const A = ANIMALS[kind], k = 'BEAR|' + kind + '|' + sc + (battle ? '|B' : ''), build = (mm) => { const s = monSpec({ n: kind[0].toUpperCase() + kind.slice(1), s: A.s, c: A.c }); s.f = 21 / s.nh * sc * A.sc; return lpRender(s, mm); };
     return battle ? texNow(k, build, bM) : TEST ? null : texGet(k, build); }
   function shrineGemLP(state) { const cols = { on: ['#0a2a4a', '#1a5a8a', '#3ab8ff', '#a0f0ff', '#ffffff'], used: ['#1a1e2a', '#3a4258', '#5a6a8a', '#a0aac0', '#ffffff'], off: ['#3a1a06', '#7a400e', '#ffaa3a', '#ffe08a', '#ffffff'] };
     return TEST ? null : texGet('SG|' + state, (mm) => lpRender({ w: 12, h: 16, ax: 6, ay: 14, prims: [{ x: 0, y: -7, rx: 3.6, ry: 6, rz: 3.6, p: 1.1, c: cols[state], em: .35, spec: 1, sh: 10 }] }, mm)); }
-  let bM = 4;
+  let bM = 4; try { const v = +localStorage.getItem('hexbM'); if (v >= 2 && v <= 5) bM = v; } catch (e) {}
 
   // ---------- characters ----------
   const BEARPAL = { a: '#8a5a2a', A: '#b07a40', b: '#5a3a1a', e: '#101010', w: '#2a1a12', k: '#3a2410' };
@@ -2849,7 +2953,7 @@
     cam.x += (guy.x - cam.x) * .08; cam.y += (guy.y - 10 - elev(ct) - cam.y) * .08;
     if (guy.mv || guy.target) { const k = Math.pow(.04, dt); pan.x *= k; pan.y *= k; if (Math.abs(pan.x) + Math.abs(pan.y) < .5) pan.x = pan.y = 0; }
     const { ox, oy } = view();
-    G = ctx; ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0); ctx.imageSmoothingEnabled = false; texPump(TQ.length > 30 ? 16 : 9);
+    G = ctx; ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0); ctx.imageSmoothingEnabled = false; texPump(TQ.length > 30 ? 16 : 9); if (!TQ.length) warmPump(B ? 2 : 5);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     if (S.cave) { ctx.fillStyle = '#060508'; ctx.fillRect(0, 0, W, H); for (let i = 0; i < 40; i++) { const x = Math.floor(((hash(i) * W * 1.3 - cam.x * .05) % W + W) % W), y = Math.floor(((hash(i + 40) * H * 1.3 - cam.y * .05 + gt * (4 + hash(i) * 8)) % H + H) % H); ctx.fillStyle = '#2a2a3a'; ctx.fillRect(x, y, 1, 2); } }
     else if (nebula) { const nx = -60 - clamp(cam.x * .02, -50, 50), ny = -60 - clamp(cam.y * .02, -50, 50); drawHi(nebula, nx, ny, nebula.uw, nebula.uh); if (planetC) lpFeet(planetC, nx + planetC.px, ny + planetC.py); if (moonC) lpFeet(moonC, nx + moonC.px, ny + moonC.py); }
@@ -2978,7 +3082,7 @@
     const prev = G; G = bctx; const BW = 160, BH = 84;
     const dw = Math.max(160, Math.round((bcv.clientWidth || 320) * dpr));
     if (bcv.width !== dw) { bcv.width = dw; bcv.height = Math.round(dw * BH / BW); }
-    const k = bcv.width / BW; bM = clamp(Math.ceil(k), 2, 5);
+    const k = bcv.width / BW, nbm = clamp(Math.ceil(k), 2, 5); if (nbm !== bM) { bM = nbm; try { localStorage.setItem('hexbM', String(bM)); } catch (e) {} }
     G.setTransform(k, 0, 0, k, 0, 0); G.imageSmoothingEnabled = false;
     const sky = G.createLinearGradient(0, 0, 0, BH); sky.addColorStop(0, '#04030c'); sky.addColorStop(1, '#160c2a'); G.fillStyle = sky; G.fillRect(0, 0, BW, BH);
     if (nebula) { G.globalAlpha = .9; drawHi(nebula, -30, -20, nebula.uw * .55, nebula.uh * .55); G.globalAlpha = 1; }
@@ -3080,9 +3184,9 @@
       const d = a - b, col = d > 0 ? '#7dff8f' : d < 0 ? '#ff7a6a' : '#9ab';
       rows += '<tr><td style="text-align:left">' + lab + '</td><td>' + (old ? b : '-') + '</td><td><b>' + a + '</b></td><td style="color:' + col + ';font-weight:700">' + (d > 0 ? '+' : '') + d + '</td></tr>';
     }
-    $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + card(g, inspSrc === 'shop' ? 'IN THE SHOP' : inspSrc === 'bag' ? 'IN YOUR BAG' : 'ON THE GROUND') + '</div>' +
+    $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + (inspList.length > 1 ? '<div data-ic="1" title="Next item" style="cursor:pointer;flex:1;min-width:150px">' : '<div style="flex:1;min-width:150px">') + card(g, inspSrc === 'shop' ? 'IN THE SHOP' : inspSrc === 'bag' ? 'IN YOUR BAG' : 'ON THE GROUND') + '</div></div>' +
       '<table style="width:100%;margin-top:8px;font-size:14px;text-align:center"><tr class="dim"><th style="text-align:left"></th><th>Now</th><th>This</th><th>Change</th></tr>' + rows + '</table>' +
-      (canEq ? '<button class="act hot" data-ieq="1" style="margin-top:10px;font-size:16px">Equip ' + g.name + (gpower(g) > gpower(old) ? ' &#9650;' : '') + '</button>' : '') + '<div class="dim" style="margin-top:8px;font-size:12px">' + (inspList.length > 1 ? 'Use the arrows or Left / Right keys to flip through items. ' : '') + 'Click outside or press Esc to close</div>';
+      (canEq ? '<button class="act hot" data-ieq="1" style="margin-top:10px;font-size:16px">Equip ' + g.name + (gpower(g) > gpower(old) ? ' &#9650;' : '') + '</button>' : '') + (canEq && inTile ? ' <button class="act" data-icarry="1" style="margin-top:10px">Carry it<small>2 bag slots</small></button>' : '') + '<div class="dim" style="margin-top:8px;font-size:12px">' + (inspList.length > 1 ? 'Click the item, the arrows, or press Left / Right to flip through. ' : '') + 'Click outside or press Esc to close</div>';
     $('inspect').style.display = 'flex'; inspectOpen = true;
   }
   let inspectOpen = false, inspSrc = '';
@@ -3123,10 +3227,10 @@
     let b = '', used = 0;
     P.bag.forEach((e, i) => { used += esize(e); b += slotHTML(e, 'data-i="' + i + '"').replace('class="slot', 'class="slot' + (bagSel === i ? ' sel' : '')); });
     for (let i = used; i < P.bagCap; i++) b += '<div class="slot empty"></div>';
-    $('bag').innerHTML = b;
+    if (renderHud.bagH !== b) { renderHud.bagH = b; $('bag').innerHTML = b; }
     if (bagSel !== null && (P.bag[bagSel] === undefined || B)) bagSel = null;
     const A = bagSel !== null ? itemOptions(bagSel) : guy.mv || aim ? [] : actionsFor(curTile()); renderHud.A = A;
-    $('actions').innerHTML = A.map((a, i) => '<button class="act' + (a.off ? ' off' : '') + (a.buy ? ' buy' : '') + (a.hot ? ' hot' : '') + '" data-a="' + i + '">' + a.label + (a.better ? ' &#9650;' : '') + '<small>' + (a.off || a.sub) + '</small></button>').join('');
+    { const ah = A.map((a, i) => '<button class="act' + (a.off ? ' off' : '') + (a.buy ? ' buy' : '') + (a.hot ? ' hot' : '') + '" data-a="' + i + '">' + a.label + (a.better ? ' &#9650;' : '') + '<small>' + (a.off || a.sub) + '</small></button>').join(''); if (renderHud.actH !== ah) { renderHud.actH = ah; $('actions').innerHTML = ah; } }
     if (stashOpen) renderStash();
   }
   function drawMini() {
@@ -4064,6 +4168,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
         '<button class="act hot" id="mnClose2" style="min-width:260px">Resume<small>or press Esc</small></button>' +
         '<button class="act" data-mt="music" style="min-width:260px">Music<small>volume, save and export tracks</small></button>' +
         '<button class="act" data-mt="guide" style="min-width:260px">How to play</button>' +
+        '<button class="act' + (autoEq ? ' hot' : '') + '" id="setAutoEq" style="min-width:260px">Auto-equip better gear: ' + (autoEq ? 'ON' : 'OFF') + '<small>picks up and wears gear that beats what you have</small></button>' +
         (endArm ? '<div class="note" style="max-width:420px;text-align:center;color:#ffb8a8;margin:6px 0 0"><b>End this run now?</b> It will <b>not count towards the Hall of Greats</b>, and its autosave is deleted. This cannot be undone.</div>' +
           '<div style="display:flex;gap:8px"><button class="act off" id="endYes">End the run</button><button class="act" id="endNo">Keep playing</button></div>'
           : '<button class="act off" id="endRun" style="min-width:260px">End run<small>this run will not count in the Hall of Greats</small></button>') + '</div>';
@@ -4091,6 +4196,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     const t = e.target;
     if (t.closest('#mnClose') || t.closest('#mnClose2')) return closeMenu();
     if (t.closest('#endRun')) { endArm = true; return renderMenu(); }
+    if (t.closest('#setAutoEq')) { autoEq = !autoEq; try { localStorage.setItem('hexautoeq', autoEq ? '1' : '0'); } catch (e) {} return renderMenu(); }
     if (t.closest('#endNo')) { endArm = false; return renderMenu(); }
     if (t.closest('#endYes')) { closeMenu(); return gameOver('abandoned'); }
     if (t.closest('#musKeep')) return musSaveTrack();
@@ -4537,7 +4643,11 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     window.addEventListener('click', out); window.addEventListener('contextmenu', out); }
   if (!TEST) $('inspect').addEventListener('click', (e) => { if (e.target.closest('[data-ieq]')) { const g = inspList[inspIdx], ct = curTile(), i = ct ? ct.loot.indexOf(g) : -1;
       if (i >= 0) { equipFrom(ct, i); if (!ct.loot.length) ct.grave = false; toast('Equipped ' + g.name); } else if (P.bag.indexOf(g) >= 0) equipBag(P.bag.indexOf(g)); closeInspect(); hudDirty = true; return; }
-    const b = e.target.closest('[data-ic]'); if (b) return inspectCycle(+b.dataset.ic); if (!e.target.closest('.bx')) closeInspect(); });
+    if (e.target.closest('[data-icarry]')) { const g = inspList[inspIdx], ct = curTile(), i = ct ? ct.loot.indexOf(g) : -1; if (i < 0) return;
+      if (bagUsed() + 2 > P.bagCap) return toast('Bag full'); giveItem(g); ct.loot.splice(i, 1); toast('Carrying ' + g.name); hudDirty = true;
+      const rest = ct.loot.filter(x => x.kind === 'gear'); if (rest.length) inspectGear(rest[Math.min(inspIdx, rest.length - 1)], rest); else closeInspect(); return; }
+    if (e.target.closest('[data-ic]')) return; if (!e.target.closest('.bx')) closeInspect(); });
+  if (!TEST) $('inspect').addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-ic]'); if (b && e.button === 0) { e.preventDefault(); inspectCycle(+b.dataset.ic); } });
   window.addEventListener('keydown', (e) => { if (!inspectOpen) return; if (e.key === 'ArrowLeft') inspectCycle(-1); else if (e.key === 'ArrowRight') inspectCycle(1); });
   // right-click (or long-press on touch) an Equip / Carry button to compare that piece
   if (!TEST) { const ac = $('actions'); let lp = null;
@@ -4565,7 +4675,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, markHud: () => { hudDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
