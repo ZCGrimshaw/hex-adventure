@@ -614,7 +614,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 48;
+  const BUILD = 49;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1729,13 +1729,13 @@
     guy.q = mv.to.q; guy.r = mv.to.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null;
     stats.steps++; if (P.hire) P.hire.left--;
     onEnter(curTile()); hudDirty = true;
+    if (!B && S.state === 'play') roamTick();   // monsters take one tile for every tile you take
   }
   function walkInstant(q, r) { // test helper
     guy.target = { q, r }; let n = 0;
     while (guy.target && !B && S.state === 'play' && n++ < 999) { chooseMove(); if (guy.mv) finishStep(); }
   }
   let lastScent = -99;
-  const furyOn = () => { for (const m of mons.values()) if (m.fury && m.roam) return true; return false; };
   function roamTick() {
     const pt = curTile();
     for (const m of [...mons.values()]) {
@@ -1748,7 +1748,7 @@
         }
       }
       if (!m.roam || gt < m.cool) continue;
-      for (let step = 0; step < (m.fury ? 3 : 1); step++) {   // monsters you have hurt with magic charge three hexes at a time
+      for (let step = 0; step < 1; step++) {   // one tile per player step, hurt or not
         const dist = hd(m.q - guy.q, m.r - guy.r); if (dist > (m.hunted ? 18 : 5)) break;
         if (dist <= 1) { if (pt.type !== 'shrine' && !guy.mv && !stashOpen && !craftOpen && !springOpen) { toast(m.name + ' hunts you down!'); startBattle(m, 'ambush'); return; } break; }
         let bq = null, bd = dist;
@@ -1773,7 +1773,6 @@
         const p = Math.min(1, mv.prog); guy.x = a.x + (b.x - a.x) * p; guy.y = a.y + (b.y - a.y) * p;
         if (mv.prog >= 1) { finishStep(); if (!B && S.state === 'play') chooseMove(); }
       }
-      roamT += dt; if (roamT > 3.2 || (roamT > 1.4 && furyOn())) { roamT = 0; roamTick(); }
       fireT += dt; if (fireT > 5) { fireT = 0; fireTick(); }
       if (mistCap()) { mistT += dt; if (mistT > 22) { mistT = 0; spawnMist(); } } else mistT = 0;
     }
