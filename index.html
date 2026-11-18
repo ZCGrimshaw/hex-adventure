@@ -206,6 +206,7 @@
 <div id="bookAsk" class="modal"><div class="bx" id="bookAskBox" style="width:min(460px,94vw);text-align:center;border-color:#c8a8ff"></div></div>
 <div id="springAsk" class="modal"><div class="bx" id="springBox" style="width:min(420px,94vw);text-align:center;border-color:#5ad0ff"></div></div>
 <div id="warpBar" class="ui"><span>Choose a shrine to warp to <b>(costs 1 crystal)</b></span><button class="act" id="warpCancel">Cancel</button></div>
+<div id="skillAlert" class="modal"><div class="bx" id="skillAlertBox" style="width:min(420px,94vw);text-align:center;border-color:#ffd23a"></div></div>
 <div id="hireAsk" class="modal"><div class="bx" id="hireBox" style="width:min(460px,94vw);text-align:center;border-color:#ffd23a"></div></div>
 <div id="smith" class="modal"><div class="bx" id="smithBox" style="width:min(640px,95vw);border-color:#ff9a3a"></div></div>
 <div id="shop" class="modal"><div class="bx" id="shopBox" style="width:min(940px,96vw);border-color:#ffd23a"></div></div>
@@ -501,7 +502,8 @@
   const monAt = (q, r) => mons.get(key(q, r));
   const BLOCK = { wall: 1, bear: 1, chasm: 1, burning: 1, blaze: 1, ice: 1, vault: 1, cave: 1, boulder: 1, cliff: 1, lake: 1, cdoor: 1 };
   const blocked = (t) => !!t && !!BLOCK[t.type];
-  const isCand = (q, r) => !tiles.has(key(q, r)) && DIRS.some(([a, b]) => tiles.has(key(q + a, r + b)));
+  // blocked hexes (cave, wall, chasm...) are dead ends: the hexes behind them stay out of reach until you open them or find another way round
+  const isCand = (q, r) => !tiles.has(key(q, r)) && DIRS.some(([a, b]) => { const t = tiles.get(key(q + a, r + b)); return !!t && !blocked(t); });
   const HINT = {
     wall: 'A solid rock wall. A bomb might open it... (craft: flint + stone + iron ore)',
     bear: 'The bear growls and will not budge. It looks hungry... maybe a fish?',
@@ -612,7 +614,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 47;
+  const BUILD = 48;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1262,9 +1264,9 @@
     wtxt.push({ x: m.x, y: m.y - 20, txt: String(d), col: SPCOL[k], t: gt });
     if (k === 'drain') { const h = Math.round(d * .6); P.hp = Math.min(maxHP(), P.hp + h); wtxt.push({ x: guy.x, y: guy.y - 26, txt: '+' + h, col: '#7dff8f', t: gt }); }
     if (m.hp <= 0) { if (B) { m.hp = 1; return; } startBattle(m, 'map'); B.log = [m.name + ' falls to your ' + SPELLS[k].name + '!']; winBattle(); return; }
-    if (k === 'frost') { m.cool = gt + 15; m.iced = gt + 15; toast(m.name + ' is frozen in place for a while'); }
+    if (k === 'frost') { m.cool = gt + 15; m.iced = gt + 15; if (!m.warden && !m.boss) { m.roam = true; m.hunted = true; m.fury = true; } toast(m.name + ' is frozen in place for a while' + (m.fury ? ', then it will hunt you!' : '')); }
     else if (m.warden) { toast(m.name + ' is hurt but guards its sigil'); }
-    else { m.roam = true; m.cool = 0; toast(m.name + ' is hurt and comes after you!'); }
+    else { m.roam = true; m.hunted = true; m.fury = true; m.cool = 0; toast(m.name + ' is hurt and charges straight at you!'); }
   }
   function castHeal() {
     if (P.mp < SPELLS.heal.cost) return toast('Not enough magic');
@@ -1733,6 +1735,7 @@
     while (guy.target && !B && S.state === 'play' && n++ < 999) { chooseMove(); if (guy.mv) finishStep(); }
   }
   let lastScent = -99;
+  const furyOn = () => { for (const m of mons.values()) if (m.fury && m.roam) return true; return false; };
   function roamTick() {
     const pt = curTile();
     for (const m of [...mons.values()]) {
@@ -1745,15 +1748,17 @@
         }
       }
       if (!m.roam || gt < m.cool) continue;
-      const dist = hd(m.q - guy.q, m.r - guy.r); if (dist > (m.hunted ? 14 : 5)) continue;
-      if (dist <= 1) { if (pt.type !== 'shrine' && !guy.mv && !stashOpen && !craftOpen && !springOpen) { toast(m.name + ' hunts you down!'); startBattle(m, 'ambush'); return; } continue; }
-      let bq = null, bd = dist;
-      for (const [dq, dr] of DIRS) {
-        const q = m.q + dq, r = m.r + dr, t = tiles.get(key(q, r));
-        if (!t || t.type === 'shrine' || blocked(t) || monAt(q, r) || (q === guy.q && r === guy.r)) continue;
-        const nd = hd(q - guy.q, r - guy.r); if (nd < bd) { bd = nd; bq = [q, r]; }
+      for (let step = 0; step < (m.fury ? 3 : 1); step++) {   // monsters you have hurt with magic charge three hexes at a time
+        const dist = hd(m.q - guy.q, m.r - guy.r); if (dist > (m.hunted ? 18 : 5)) break;
+        if (dist <= 1) { if (pt.type !== 'shrine' && !guy.mv && !stashOpen && !craftOpen && !springOpen) { toast(m.name + ' hunts you down!'); startBattle(m, 'ambush'); return; } break; }
+        let bq = null, bd = dist;
+        for (const [dq, dr] of DIRS) {
+          const q = m.q + dq, r = m.r + dr, t = tiles.get(key(q, r));
+          if (!t || t.type === 'shrine' || blocked(t) || monAt(q, r) || (q === guy.q && r === guy.r)) continue;
+          const nd = hd(q - guy.q, r - guy.r); if (nd < bd) { bd = nd; bq = [q, r]; }
+        }
+        if (!bq) break; mons.delete(key(m.q, m.r)); m.q = bq[0]; m.r = bq[1]; mons.set(key(m.q, m.r), m);
       }
-      if (bq) { mons.delete(key(m.q, m.r)); m.q = bq[0]; m.r = bq[1]; mons.set(key(m.q, m.r), m); }
     }
   }
 
@@ -1768,10 +1773,12 @@
         const p = Math.min(1, mv.prog); guy.x = a.x + (b.x - a.x) * p; guy.y = a.y + (b.y - a.y) * p;
         if (mv.prog >= 1) { finishStep(); if (!B && S.state === 'play') chooseMove(); }
       }
-      roamT += dt; if (roamT > 3.2) { roamT = 0; roamTick(); }
+      roamT += dt; if (roamT > 3.2 || (roamT > 1.4 && furyOn())) { roamT = 0; roamTick(); }
       fireT += dt; if (fireT > 5) { fireT = 0; fireTick(); }
       if (mistCap()) { mistT += dt; if (mistT > 22) { mistT = 0; spawnMist(); } } else mistT = 0;
     }
+    if (!TEST) { if (P.sp !== skillSp) { if (P.sp > skillSp) skillRemind = gt + 3.5; skillSp = P.sp; }
+      if (P.sp > 0 && gt >= skillRemind && !springOpen && !B && S.state === 'play' && !guy.mv && !skillsOpen && !shopOpen && !menuOpen && !stashOpen && !craftOpen && !bookOpen && !hallOpen && !inspectOpen && !warpMode && skillAvail()) askSkills(); }
     hireTick(dt);
     if (pet) { const w = toWorld(pet.q, pet.r), k = Math.min(1, dt * 4); if (Math.abs(w.x - pet.x) > 1) pet.face = w.x > pet.x ? 1 : -1; pet.x += (w.x - pet.x) * k; pet.y += (w.y - pet.y) * k; }
     for (const m of mons.values()) { const w = toWorld(m.q, m.r), k = Math.min(1, dt * 5); m.x += (w.x - m.x) * k; m.y += (w.y - m.y) * k; }
@@ -3603,6 +3610,15 @@
   }
   const hireScore = () => stats.bosses * 3 + stats.puzzles + stats.caves + stats.shrines;   // big deeds the hired hand shared in
   const planTotal = (rate, p) => Math.max(1, Math.round(rate * p[0] * (1 - p[1])));
+  // skill point reminder: appears when you are idle with points to spend; "Remind me later" snoozes it for 4 minutes (a new level-up brings it back)
+  let skillRemind = 0, skillSp = 0;
+  const skillAvail = () => SKILLS.some(x => skCur(x.id) < x.max && P.sp >= skillCost(x, skCur(x.id)));
+  function askSkills() {
+    if (TEST || springOpen) return; springOpen = true; $('skillAlert').style.display = 'flex';
+    $('skillAlertBox').innerHTML = '<h2 style="color:#ffd23a">SKILL POINTS</h2><div style="font-size:16px;margin:6px 0 12px">You have <b style="color:#ffd23a">' + P.sp + '</b> skill point' + (P.sp > 1 ? 's' : '') + ' to spend.</div><div style="display:flex;gap:10px;justify-content:center"><button class="act buy" id="skOpen">Open skills<small>spend them now</small></button><button class="act" id="skLater">Remind me later<small>ask again in 4 minutes</small></button></div>';
+  }
+  function closeSkillAlert(later_) { springOpen = false; $('skillAlert').style.display = 'none'; skillRemind = gt + 240; hudDirty = true; if (!later_) openSkills(); }
+  if (!TEST) $('skillAlertBox').onclick = (e) => { if (e.target.closest('#skOpen')) closeSkillAlert(false); else if (e.target.closest('#skLater')) closeSkillAlert(true); };
   let hireHandle = null;
   function askHire(mode, tile) {
     if (TEST || springOpen || B) return; const renew = mode === 'renew', h = renew ? P.hire : tile.hire; if (!h) return;
@@ -3883,7 +3899,7 @@
     if (e.key === 'Escape') { if (inspectOpen) closeInspect(); else if (shopOpen) closeShop(); if (menuOpen) closeMenu(); if (bookOpen) closeBook(); if (inspectOpen) closeInspect(); if (hallOpen) closeHall(); if (skillsOpen) closeSkills(); if (aim) { aim = null; hudDirty = true; } if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (bagSel !== null) { bagSel = null; hudDirty = true; } } });
   window.addEventListener('contextmenu', (e) => e.preventDefault());
   // left or right click on the dim area outside a window closes it (battle, name, book choice, awaken, game-over and update windows stay open)
-  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), hall: () => hallOpen && closeHall(), smith: () => smithOpen && closeSmith(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
+  if (!TEST) { const OUT = { gmenu: () => menuOpen && closeMenu(), skills: () => skillsOpen && closeSkills(), craft: () => craftOpen && closeCraft(), stash: () => stashOpen && closeStash(), shop: () => shopOpen && closeShop(), spellbook: () => bookOpen && closeBook(), inspect: () => inspectOpen && closeInspect(), hall: () => hallOpen && closeHall(), skillAlert: () => { if ($('skillAlert').style.display !== 'none') closeSkillAlert(true); }, smith: () => smithOpen && closeSmith(), springAsk: () => { if (springOpen && $('springAsk').style.display !== 'none') { closeSpring(); toast('You mark the spring. Return any time to heal'); } } };
     let downEl = null; window.addEventListener('mousedown', (e) => { downEl = e.target; }, true);
     const out = (e) => { const el = e.target; if (el && el.classList && el.classList.contains('modal') && OUT[el.id] && (e.type === 'contextmenu' || downEl === el)) { OUT[el.id](); } };
     window.addEventListener('click', out); window.addEventListener('contextmenu', out); }
