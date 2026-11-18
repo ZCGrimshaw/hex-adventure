@@ -182,7 +182,7 @@
 <div id="zoomBtns" class="ui"><button id="zIn" aria-label="Zoom in">+</button><button id="zCtr" aria-label="Reset view">&#9678;</button><button id="zOut" aria-label="Zoom out">&minus;</button></div>
 <div id="tip" class="ui"><span id="tipText"></span></div>
 <div id="htip"></div>
-<div id="lvlBanner" class="ui"><span class="lb"><h1>LEVEL UP!</h1><div id="lvlSub"></div></span></div>
+<div id="lvlBanner" class="ui"><span class="lb"><h1 id="lvlH">LEVEL UP!</h1><div id="lvlSub"></div></span></div>
 <div id="toast" class="ui"><span id="toastText"></span></div>
 <div id="bottom" class="ui">
   <div id="actions"></div>
@@ -490,6 +490,11 @@
   let bagSel = null, pet = null, fireT = 0, toastT = 0, roamT = 0, flash = 0, hudDirty = true, stashOpen = false, craftOpen = false;
   let glows = [], mistT = 0, darkC = null;
   let best = 0; try { best = parseInt(localStorage.getItem('hexworld_g3_best') || '0', 10) || 0; } catch (e) {}
+  // features that open up as the player finds space gems during a run
+  const UNLOCKS = [['merge', 5, 'ANIMAL BONDS', 'Matching animals can now join into one stronger animal'], ['warp', 10, 'SHRINE WARPING', 'Spend a crystal at a shrine to warp to another shrine'], ['hire', 15, 'HIRED HELP', 'Travellers will now offer to work for wages'], ['smith', 20, 'BLACKSMITHS', 'Smiths will now appear to reforge your gear']];
+  const unlockAt = (k) => UNLOCKS.find(u => u[0] === k)[1];
+  const unlocked = (k) => S.gems >= unlockAt(k);
+  const lockMsg = (k) => 'Unlocks at ' + unlockAt(k) + ' space gems (you have found ' + S.gems + ')';
   let bestGems = 0; try { bestGems = parseInt(localStorage.getItem('hexworld_g3_gems') || '0', 10) || 0; } catch (e) {}
 
   const xpNeed = (l) => Math.round(16 * Math.pow(l, 1.45) * Math.pow(1.5, (P && P.awk) || 0));
@@ -576,6 +581,7 @@
     d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
+    if (!d.S.unl) { d.S.unl = {}; for (const u of UNLOCKS) if ((d.S.gems || 0) >= u[1]) d.S.unl[u[0]] = 1; }   // runs already past a threshold do not replay the banner
     if (d.pet) { if (!d.pet.kind) d.pet.kind = 'bear'; if (!d.pet.lvl) d.pet.lvl = 1; if (d.pet.hunger === undefined) d.pet.hunger = 0; }
     return d;
   }
@@ -615,7 +621,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 50;
+  const BUILD = 51;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -654,7 +660,7 @@
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
-    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
+    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, unl: {}, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
@@ -742,8 +748,8 @@
     else if (S.boss && !S.boss.open && S.boss.forced.length && d >= S.boss.nextForce) { type = S.boss.forced.shift(); S.boss.nextForce = d + 2 + ri(0, 1); }
     else if (shrineDue(d)) { type = 'shrine'; S.nextShrine = 1e9; S.lastShrine = d; }
     else if (d >= S.nextShop && d - S.lastShrine >= 3) { type = 'merchant'; S.nextShop = d + ri(45, 70); }
-    else if (d >= (S.nextHire || 1e9) && d >= 14 && d - S.lastShrine >= 3) { type = 'hireling'; S.nextHire = d + ri(75, 120); }
-    else if (d >= (S.nextSmith || 1e9) && d >= 22 && d - S.lastShrine >= 3) { type = 'smith'; S.nextSmith = d + ri(95, 150); }
+    else if (unlocked('hire') && d >= (S.nextHire || 1e9) && d >= 14 && d - S.lastShrine >= 3) { type = 'hireling'; S.nextHire = d + ri(75, 120); }
+    else if (unlocked('smith') && d >= (S.nextSmith || 1e9) && d >= 22 && d - S.lastShrine >= 3) { type = 'smith'; S.nextSmith = d + ri(95, 150); }
     else if (d === 2 && !P.eq.weapon) { type = 'gear'; t.loot.push(makeGear(0, 0, 'weapon')); }
     else if (d === 8 && !Object.keys(P.spells).length) type = 'rune';
     else if (!S.caveSeen && d >= S.firstCave) type = 'cave';
@@ -792,7 +798,7 @@
   const curD = () => S.cave ? S.cave.d + S.cave.n : S.revealed;
   const gemBal = () => S.gems - (S.gemsSpent || 0);
   function addGems(n, why) {
-    S.gems += n; stats.gemsFound = (stats.gemsFound || 0) + n; hudDirty = true;
+    S.gems += n; stats.gemsFound = (stats.gemsFound || 0) + n; hudDirty = true; checkUnlocks();
     const w = toWorld(guy.q, guy.r); burst(w.x, w.y - 16, 30, ['#e07aff', '#5ad8ff', '#ffffff'], 50, -40, 20);
     toast('+' + n + ' SPACE GEM' + (n > 1 ? 'S' : '') + '! ' + (why || '') + ' (' + gemBal() + ' to spend)');
     if (!S.gemTip) { S.gemTip = true; later(() => toast('Space gems: spend 1 to rest fully at a shrine. Every gem you find also counts toward your leaderboard score, and spending never lowers it.'), 2600); }
@@ -943,10 +949,15 @@
   // =====================================================
   //  TILE INTERACTION
   // =====================================================
-  function levelBanner(n) {
-    if (TEST) return; const el = $('lvlBanner');
-    $('lvlSub').textContent = 'Level ' + P.lvl + (n > 1 ? ' (+' + n + ' levels)' : '') + '  ·  ' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend (press K)';
-    el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+  let bannerFree = 0;
+  function showBanner(title, sub) {
+    if (TEST) return; const el = $('lvlBanner'), go = () => { $('lvlH').textContent = title; $('lvlSub').textContent = sub; el.classList.remove('go'); void el.offsetWidth; el.classList.add('go'); bannerFree = Date.now() + 3300; };
+    const wait = bannerFree - Date.now(); if (wait > 0) setTimeout(go, wait); else go();   // banners queue instead of overwriting each other
+  }
+  function levelBanner(n) { showBanner('LEVEL UP!', 'Level ' + P.lvl + (n > 1 ? ' (+' + n + ' levels)' : '') + '  ·  ' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend (press K)'); }
+  function checkUnlocks() {
+    S.unl = S.unl || {};
+    for (const u of UNLOCKS) if (S.gems >= u[1] && !S.unl[u[0]]) { S.unl[u[0]] = 1; showBanner('UNLOCKED: ' + u[2], u[3]); toast('Unlocked: ' + u[2].toLowerCase() + '. ' + u[3]); }
   }
   function gainXp(n) {
     P.xp += n; let gained = 0;
@@ -1134,7 +1145,7 @@
         else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
         else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; hudDirty = true; later(spawnMist, 1200); } }); }
-    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
+    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
@@ -1178,6 +1189,7 @@
     const roll = rnd() < (id === 'cooked' ? .75 : .4);
     if (pet && petKind() !== kind) { t.type = 'bearfriend'; toast(msg + ' Your ' + petName() + ' bares its teeth: it only teams up with its own kind.'); }
     else if (pet && (pet.lvl || 1) >= 3) { t.type = 'bearfriend'; toast(msg + ' Your ' + petName() + ' is already as mighty as it gets.'); }
+    else if (pet && !unlocked('merge')) { t.type = 'bearfriend'; toast(msg + ' It would join your ' + petName() + ', but animal bonds ' + lockMsg('merge').toLowerCase() + '.'); }
     else if (roll && pet) {
       t.type = 'grass'; t.den = true; pet.lvl = (pet.lvl || 1) + 1; pet.max = petMaxHp(kind, pet.lvl); pet.hp = pet.max; pet.hunger = 0;
       burst(p.x, p.y - 14, 30, ['#ffe14a', '#ffffff'], 60, -40, 20);
@@ -1364,7 +1376,7 @@
         spend(); stats.bears++; stats.puzzles++; const d = S.revealed, g = ri(6, 12) + Math.floor(d / 5); P.gold += gm(g); stats.gold += g;
         b.loot.push(makeGear(d, 1)); b.loot.push(randItem(d));
         befriend(b, id, 'The bear munches happily. It was sitting on a stash (+' + g + ' gold).'); } });
-      else if (bf && (!pet || (petKind() === animalOf(bf) && (pet.lvl || 1) < 3))) O.push({ label: 'Use: feed the ' + animalOf(bf), sub: pet ? 'it might join your ' + petKind() + ' and grow stronger' : 'it might follow you', run() { spend(); befriend(bf, id, 'The ' + animalOf(bf) + ' eats.'); } });
+      else if (bf && (!pet || (petKind() === animalOf(bf) && (pet.lvl || 1) < 3))) O.push({ label: 'Use: feed the ' + animalOf(bf), sub: pet ? 'it might join your ' + petKind() + ' and grow stronger' : 'it might follow you', off: pet && !unlocked('merge') ? 'Animal bonds ' + lockMsg('merge').toLowerCase() : false, run() { spend(); befriend(bf, id, 'The ' + animalOf(bf) + ' eats.'); } });
     }
     if (pet && (id === 'fish' || id === 'cooked' || id === 'meat' || id === 'berries')) O.push({ label: 'Use: feed your ' + petName(), sub: 'keeps it fed and happy', better: true, run() {
       spend(); const full = id !== 'berries'; pet.hunger = full ? 0 : Math.max(0, (pet.hunger || 0) - 40);
@@ -3055,7 +3067,7 @@
     if (TEST) return;
     let sk = ''; for (let i = 0; i < 5; i++) sk += img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
     const mh = maxHP(), mm = maxMP(), xn = xpNeed(P.lvl);
-    let st = '<div class="hdr"><div class="skulls" title="Deaths. Five skulls ends the run">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
+    let st = '<div class="hdr"><div class="skulls" title="Deaths. Five skulls ends the run">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it. Finding gems unlocks: animal bonds at ' + unlockAt('merge') + ', shrine warping at ' + unlockAt('warp') + ', hired help at ' + unlockAt('hire') + ', blacksmiths at ' + unlockAt('smith') + '.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
       '<div class="bar big hp"><i style="width:' + pct(P.hp, mh) + '"></i><span>HP ' + P.hp + ' / ' + mh + '</span></div>' +
       '<div class="bar big mp"><i style="width:' + pct(P.mp, mm) + '"></i><span>MP ' + P.mp + ' / ' + mm + '</span></div>' +
       '<div class="minline">Lv ' + P.lvl + ' &middot; ' + S.revealed + ' tiles &middot; ' + P.gold + ' gold</div>' +
@@ -3724,7 +3736,7 @@
   let warpMode = null, warpScale = null;
   const shrineList = () => { if (S.cave) return []; const out = []; for (const t of tiles.values()) if (t.type === 'shrine' && !(t.q === guy.q && t.r === guy.r)) out.push({ t, d: hd(t.q - guy.q, t.r - guy.r) }); return out.sort((a, b) => a.d - b.d); };
   function startWarp() {
-    if (TEST || B || warpMode || !atShrine()) return; const list = shrineList(); if (!list.length || !countOf('crystal', true)) return;
+    if (TEST || B || warpMode || !atShrine() || !unlocked('warp')) return; const list = shrineList(); if (!list.length || !countOf('crystal', true)) return;
     let x0 = guy.x, x1 = guy.x, y0 = guy.y, y1 = guy.y;
     for (const e of list) { const w = toWorld(e.t.q, e.t.r); x0 = Math.min(x0, w.x); x1 = Math.max(x1, w.x); y0 = Math.min(y0, w.y); y1 = Math.max(y1, w.y); }
     const bw = x1 - x0 + 90, bh = y1 - y0 + 110;
@@ -3954,7 +3966,7 @@
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
