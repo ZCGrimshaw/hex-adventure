@@ -604,7 +604,7 @@
     rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 45;
+  const BUILD = 46;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2198,8 +2198,8 @@
         glow(cx, cy - 14 + oy, 16, '#ffe14a', .35);
         for (let y = 0; y < 7; y++) for (let x = 0; x < 5; x++) if (QM[y][x] === '1') { px(cx - 5 + x * 2 + 1, cy - 22 + y * 2 + oy + 1, 2, 2, '#000'); px(cx - 5 + x * 2, cy - 22 + y * 2 + oy, 2, 2, c); } } break;
       case 'trap': if (t.sprung) ob('spikes', 32, 14, 16, 10, fSpikes, cx, cy + 2); break;
-      case 'hireling': if (t.hire) { drawHuman(cx, cy + 4, t.hire.cls, 1, 0); const b = Math.round(Math.sin(gt * 4) * 2); px(cx - 1, cy - 30 + b, 2, 5, '#000'); px(cx, cy - 29 + b, 1, 3, '#ffe14a'); px(cx, cy - 24 + b, 1, 1, '#ffe14a'); } break;
-      case 'smith': { px(cx - 8, cy - 1, 14, 2, '#2a2a34'); px(cx - 10, cy - 5, 18, 4, '#5a5a6a'); px(cx - 10, cy - 5, 18, 1, '#9a9aae'); px(cx - 6, cy - 8, 10, 3, '#4a4a58'); px(cx + 9, cy - 6, 8, 7, '#3a2a22'); px(cx + 10, cy - 5, 6, 4, '#ff7a1a'); px(cx + 11, cy - 6 - (Math.floor(gt * 8) % 2), 4, 2, '#ffd23a'); px(cx - 14, cy - 12, 2, 9, '#7a5a3a'); px(cx - 16, cy - 14, 6, 3, '#8a8a9a'); glow(cx + 13, cy - 5, 22, '#ff8a2a', .4 + .15 * Math.sin(gt * 9)); break; }
+      case 'hireling': if (t.hire) { drawHuman(cx, cy + 4, t.hire.cls, 1, 0); const b = Math.sin(gt * 4) * 2; glow(cx, cy - 36 + b, 12, '#ffe14a', .35); text('!', cx, cy - 44 + b, '#ffe14a', 1.6); } break;
+      case 'smith': ob('smith', 74, 62, 32, 56, () => {}, cx, cy + 4); glow(cx + 17, cy - 14, 24, '#ff8a2a', .4 + .15 * Math.sin(gt * 9)); break;
       case 'merchant': ob('tent', 46, 36, 23, 33, fTent, cx, cy + 3); if (Math.floor(gt * 2) % 5 === 0) px(cx + 8, cy - 8, 1, 1, '#ffffff'); break;
       case 'shrine': { ob('shrine', 28, 32, 14, 29, fShrine, cx - 13, cy + 1); ob('stash', 24, 26, 12, 18, fChest(false, true), cx + 18, cy + 5);
         const on = S.cp === t, bob = Math.round(Math.sin(gt * 2.5) * 1.5), fy = cy - 31 + bob;
@@ -2491,6 +2491,7 @@
     else if ((m = /^ore(\d+)$/.exec(k))) s = rockSpec(+m[1] + 1, ['#140e10', '#2a2024', '#43383a', '#5e5250', '#827468'], '#ff9a3a');
     else if ((m = /^flint(\d+)$/.exec(k))) s = shardSpec(+m[1], ['#08080e', '#16161f', '#262634', '#3c3c50', '#60607a', '#9a9ab8'], 0);
     else if ((m = /^crys(\d+)$/.exec(k))) s = shardSpec(+m[1] + 1, CRYR, .3);
+    else if (k === 'smith') s = smithSpec();
     else if (k === 'chest') s = chestSpec(false); else if (k === 'chestO') s = chestSpec(true);
     else if (k === 'stash') s = chestSpec(false, ['#140a24', '#2e1450', '#4a2478', '#6e3aa8', '#9a62d0']);
     else if (k === 'rune') s = { w: 24, h: 34, ax: 12, ay: 30, f: .85, prims: [{ x: 0, y: -1.5, rx: 8, ry: 2.5, rz: 6, c: STONER }, { x: 0, y: -13, rx: 6, ry: 12, rz: 4, p: 2.8, c: ['#14122a', '#26244a', '#3c3a68', '#58568a', '#7c7aaa', '#a8a6cc'], tex: .3 }] };
@@ -3612,14 +3613,23 @@
   }
   if (!TEST) $('hireBox').onclick = (e) => { if (hireHandle) hireHandle(e); };
   let hirePos = null;
+  // hired hands reuse the hero's low-poly model with their own colours
+  function humanSpec(cls, fr) {
+    const C = cls === 'Shieldbearer' ? { tun: '#3a5ab8', cap: '#a8b2c8', leg: '#2a3048', cloak: '#2a4486' } : cls === 'Scout' ? { tun: '#3a8a4a', cap: '#2e6a3a', leg: '#5a4a30', cloak: '#2a5a34' } : { tun: '#b8382e', cap: '#6a2a24', leg: '#3a3048', cloak: '#7a2a24' };
+    const s = heroSpec({ helmet: { col: C.cap }, chest: { col: C.tun }, legs: { col: C.leg }, boots: { col: '#5a321c' }, weapon: { col: cls === 'Scout' ? '#b8a888' : '#d8dcec' }, shield: cls === 'Shieldbearer' ? { col: '#8aa8ff' } : null }, fr);
+    s.prims[0].c = C.cloak; return s;
+  }
+  const humanLP = (cls, fr) => texNow('HU|' + cls + '|' + fr, (m) => { const s = humanSpec(cls, fr); s.f = .66; return lpRender(s, m); });
   function drawHuman(bx, by, cls, face, hop) {
-    const pal = cls === 'Shieldbearer' ? ['#3a5ab8', '#8aa8ff', '#c8c8d8'] : cls === 'Scout' ? ['#2e8a48', '#7ad890', '#7a5a3a'] : ['#b8382e', '#ff8a7a', '#c8c8d8'];
-    const x = Math.round(bx), y = Math.round(by - (hop || 0)), f = face >= 0 ? 1 : -1;
-    ell(bx, by, 6, 2, 'rgba(0,20,8,0.45)');
-    px(x - 3, y - 6, 3, 6, '#3a2a22'); px(x + 1, y - 6, 3, 6, '#3a2a22');
-    px(x - 4, y - 14, 9, 8, pal[0]); px(x - 4, y - 14, 9, 1, pal[1]); px(x - 4, y - 8, 9, 1, '#2a1a10');
-    px(x - 3, y - 19, 7, 5, '#f0c8a0'); px(x - 4, y - 21, 9, 3, pal[2]); px(x + (f > 0 ? 1 : -2), y - 17, 1, 1, '#101010');
-    if (cls === 'Shieldbearer') { px(x + (f > 0 ? -7 : 5), y - 14, 3, 7, pal[1]); px(x + (f > 0 ? -7 : 5), y - 14, 3, 1, '#fff'); } else px(x + (f > 0 ? 5 : -6), y - 17, 1, 10, '#d8d8e8');
+    if (TEST) return; ell(bx, by, 6, 2, 'rgba(0,20,8,0.45)');
+    lpFeet(humanLP(cls, hop ? Math.floor(gt * 8) % 2 : 0), bx, by - (hop || 0), face < 0);
+  }
+  function smithSpec() {
+    return { w: 74, h: 62, ax: 32, ay: 56, f: .9, prims: [
+      { x: 17, y: -9, rx: 12, ry: 9, rz: 9, p: 6, c: STONER, tex: .5, tf: .6 }, { x: 17, y: -19, rx: 10.5, ry: 2, rz: 8, p: 6, c: STONER },
+      { x: 17, y: -20.8, rx: 7.5, ry: 1.5, rz: 5.8, z: 1, c: ['#3a0a04', '#8a1e08', '#e04a10', '#ff9a2a', '#ffe27a'], em: 1 }, { x: 21, y: -31, rx: 4, ry: 8, rz: 4, z: -3, p: 6, c: STONER },
+      { x: -11, y: -5, rx: 7, ry: 5, rz: 7, p: 2.6, c: WOODR, tex: .5 }, { x: -11, y: -9.5, rx: 4, ry: 2.4, rz: 3, p: 4, c: STEELR }, { x: -11, y: -13, rx: 9, ry: 2.4, rz: 4.4, p: 5, c: STEELR, spec: .8 },
+      { x: -20, y: -13.4, rx: 3.6, ry: 1.5, rz: 2.4, a: .12, c: STEELR, spec: .8 }, { x: -8, y: -17.6, rx: 3.6, ry: 1.5, rz: 1.5, a: .3, z: 2, c: STEELR, spec: 1 }, { x: -4, y: -15.5, rx: .9, ry: 4.4, rz: .9, a: -1.1, z: 2, c: WOODR }] };
   }
   function drawHired(ox, oy) {
     const h = P.hire, bx = hirePos.x + ox, by = hirePos.y + oy, mvg = Math.abs(hirePos.tx - hirePos.x) + Math.abs(hirePos.ty - hirePos.y) > 1, hop = mvg ? Math.round(Math.abs(Math.sin(gt * 10)) * 2) : 0;
