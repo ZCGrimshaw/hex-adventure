@@ -670,7 +670,7 @@
     rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 56;
+  const BUILD = 57;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2842,6 +2842,21 @@
       { x: 0, y: -39, rx: 9, ry: 10, rz: 8, c: a, em: .12, tex: .15 }, { x: -2.5, y: -38, rx: 5.5, ry: 6.5, rz: 2, z: 6.5, c: DARKR, amb: .05, dif: .1 },
       { x: -12, y: -28, rx: 3, ry: 9, rz: 3, a: .75, z: 3, c: a, em: .2 }, { x: -18, y: -22, rx: 1, ry: 3, rz: 1, a: .2, z: 4, p: 1.2, c: '#e8e0d0' }, { x: -16, y: -21, rx: 1, ry: 3, rz: 1, a: -.1, z: 4, p: 1.2, c: '#e8e0d0' }],
       post: eyesP([[-5, -39], [.5, -39]], .9, 'rgba(120,220,255,.95)') };
+    if (n === 'Demon') { const horn = ['#2a2018', '#5a4a38', '#a8987e', '#e8dcc0', '#fffaf0'], wg = shade(b, -.15);
+      return { nh: 52, w: 70, h: 74, ax: 35, ay: 68, prims: [
+      { x: 13, y: -22, rx: 14, ry: 13, rz: 1.6, z: -5, a: -.5, p: 1.5, c: wg, tex: .25, tf: .3, amb: .3 }, { x: 22, y: -36, rx: 1.3, ry: 13, rz: 1.3, a: -.9, z: -4, c: a },
+      { x: 8, y: -46, rx: 12, ry: 10, rz: 1.6, z: -6, a: -.2, p: 1.5, c: wg, tex: .25, tf: .3, amb: .3 }, { x: 12, y: -52, rx: 1.2, ry: 12, rz: 1.2, a: -.5, z: -4, c: a },
+      { x: 14, y: -12, rx: 1.6, ry: 9, rz: 1.6, a: -.9, z: -2, p: 1.3, c: a }, { x: 26, y: -8, rx: 4, ry: 3, rz: 1.4, a: .6, z: -2, p: 1.3, c: a },
+      { x: -3.5, y: -9, rx: 3.2, ry: 9, rz: 3.2, z: -2, p: 2.6, c: b }, { x: 3.5, y: -9, rx: 3.2, ry: 9, rz: 3.2, z: 2, p: 2.6, c: b },
+      { x: -4, y: -1.5, rx: 4, ry: 1.8, rz: 3, z: -2, c: horn }, { x: 4, y: -1.5, rx: 4, ry: 1.8, rz: 3, z: 2, c: horn },
+      { x: 0, y: -26, rx: 8, ry: 10, rz: 6, p: 2.6, c: a, spec: .3, tex: .25 }, { x: 0, y: -22, rx: 5, ry: 7, rz: 4, z: 3, p: 2, c: shade(a, .3) },
+      { x: -10.5, y: -27, rx: 2.6, ry: 7.5, rz: 2.6, a: .5, z: 2, c: a }, { x: -15, y: -21, rx: 2.4, ry: 2.4, rz: 2.4, z: 2, c: a },
+      { x: 9.5, y: -29, rx: 2.4, ry: 7, rz: 2.4, a: -.3, z: -3, c: a },
+      { x: -19, y: -28, rx: .9, ry: 14, rz: .9, z: 2, p: 1.2, c: horn }, { x: -19, y: -42, rx: 3.5, ry: 1, rz: 1, z: 2, c: horn }, { x: -22, y: -41, rx: 1, ry: 2.5, rz: 1, z: 2, c: horn }, { x: -16, y: -41, rx: 1, ry: 2.5, rz: 1, z: 2, c: horn },
+      { x: 0, y: -39, rx: 6.4, ry: 6.4, rz: 5.8, c: a, spec: .3 }, { x: -4.5, y: -37, rx: 3.6, ry: 2.8, rz: 3.2, z: 1, p: 2.2, c: shade(a, .15) },
+      { x: -7.5, y: -47, rx: 1.6, ry: 5, rz: 1.6, a: .55, z: -2, p: 1.3, c: horn }, { x: 2.5, y: -47, rx: 1.6, ry: 5, rz: 1.6, a: -.55, z: 2, p: 1.3, c: horn },
+      { x: -7, y: -35, rx: 3, ry: .7, rz: 1.6, z: 2, c: DARKR }],
+      post: eyesP([[-4, -41], [.8, -41]], 1, 'rgba(255,230,60,.98)') }; }
     if (s === 'dragon') { const bel = shade(a, .45), wg = shade(b, -.2), bone = ['#2a2420', '#5a5248', '#9a9282', '#d8d0bc', '#fffaf0'];
       return { nh: 58, w: 96, h: 78, ax: 46, ay: 72, prims: [
       { x: 14, y: -46, rx: 17, ry: 12, rz: 2, z: -9, a: -.25, p: 1.4, c: wg, tex: .3, tf: .25, amb: .3 }, { x: 4, y: -48, rx: 15, ry: 11, rz: 2, z: -6, a: -.6, p: 1.4, c: wg, tex: .3, tf: .25, amb: .3 },
