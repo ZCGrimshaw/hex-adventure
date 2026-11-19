@@ -670,7 +670,7 @@
     rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 55;
+  const BUILD = 56;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -3334,7 +3334,7 @@
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
     else st += '<div class="call dim">Next boss around tile ' + S.nextBoss + '</div>';
     if (P.sp) st += '<div class="call" style="border-color:#ffd23a"><b style="color:#ffe14a">' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend!</b> Press K</div>';
-    st += '<button class="hallbtn" id="hallBtn">&#127942; Hall of Greats</button><button class="hallbtn" id="menuBtn" style="margin-top:4px;border-color:#5ab0ff;color:#bfe0ff">&#9776; Menu &amp; guide</button>';
+    st += '<button class="hallbtn" id="hallBtn">&#127942; Hall of Greats</button><button class="hallbtn" id="menuBtn" style="margin-top:4px;border-color:#5ab0ff;color:#bfe0ff">&#9776; Menu</button>';
     $('stat').innerHTML = st;
     $('skillBtn').classList.toggle('glow', P.sp > 0);
     let g = '<h4 id="gearT">GEAR<span>ATK ' + pAtk() + ' · DEF ' + pDef() + '</span></h4><div class="body"><div class="ggrid">';
@@ -3374,7 +3374,7 @@
     $('actions').onclick = (e) => { if (warpMode) return; const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
-    $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); else if (e.target.closest('#menuBtn')) openMenu();
+    $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); else if (e.target.closest('#menuBtn')) openMenu('pause');
       else if (e.target.closest('.hdr, .bar, .kv, .minline')) { $('stat').classList.toggle('min'); try { localStorage.setItem('hexstatmin', $('stat').classList.contains('min') ? '1' : '0'); } catch (_) {} } };
     $('skillBtn').onclick = () => { if (B || S.state !== 'play') return; openSkills(); };
     $('bookBtn').onclick = () => { if (B || S.state !== 'play') return; openBook(); };
@@ -4281,8 +4281,8 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   }
   function renderMenu() {
     if (TEST || !menuOpen) return;
-    const tabs = [['pause', 'Paused'], ['guide', 'How to play'], ['music', 'Music'], ['export', 'Export game info']];
-    let h = '<h2>' + (menuTab === 'pause' ? 'PAUSED' : 'MENU') + '</h2><div style="display:flex;gap:6px;justify-content:center;margin-bottom:8px">' + tabs.map(([k, l]) => '<button class="act' + (menuTab === k ? ' hot' : '') + '" data-mt="' + k + '">' + l + '</button>').join('') + '</div>';
+    const tabs = [['pause', 'Menu'], ['guide', 'How to play'], ['music', 'Music'], ['export', 'Export game info']];
+    let h = '<h2>MENU</h2><div class="note" style="text-align:center;margin:-6px 0 8px">The game is paused while this is open</div><div style="display:flex;gap:6px;justify-content:center;margin-bottom:8px">' + tabs.map(([k, l]) => '<button class="act' + (menuTab === k ? ' hot' : '') + '" data-mt="' + k + '">' + l + '</button>').join('') + '</div>';
     if (menuTab === 'guide') h += '<div style="text-align:left;font-size:14px">' + guideHTML() + '</div>';
     else if (menuTab === 'pause') {
       h += '<div style="display:flex;flex-direction:column;gap:8px;align-items:center;margin:6px 0 4px">' +

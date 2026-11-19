@@ -1,4 +1,4 @@
 {
-  "build": 55,
-  "notes": "Fix: missing hero, companion or tiles after the browser clears graphics memory. Lighter memory use for battle pictures."
+  "build": 56,
+  "notes": "The Menu button now opens the main menu (settings, music, how to play, end run)."
 }
