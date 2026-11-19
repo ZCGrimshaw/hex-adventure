@@ -65,9 +65,11 @@
   .modal { position:fixed; inset:0; background:#000b; display:none; align-items:center; justify-content:center; z-index:10; }
   .bx { width:min(620px,95vw); max-height:94vh; overflow:auto; background:linear-gradient(#142219,#0a120d); border:3px solid #7dff8f; border-radius:10px; padding:12px 14px; box-sizing:border-box; box-shadow:0 0 30px #7dff8f33; }
   .bx h2 { margin:0 0 8px; font-size:19px; text-align:center; letter-spacing:2px; }
-  #bc { width:100%; max-width:max(240px, calc((100vh / var(--uz, 1) - 330px) * 1.9)); margin:0 auto; aspect-ratio:160/84; border:2px solid #000; border-radius:6px; display:block; background:#000; }
+  #battle .bx { width:min(920px,97vw); }
+  #battle .small, #battle .bar span { font-size:11px; }
+  #bc { width:100%; max-width:max(260px, calc((100vh / var(--uz, 1) - 290px) * 1.9)); margin:0 auto; aspect-ratio:160/84; border:2px solid #000; border-radius:6px; display:block; background:#000; }
   .bstats { display:flex; gap:12px; margin-top:6px; } .bstats > div { flex:1; }
-  #bLog { height:80px; overflow:hidden; margin:8px 0; background:#050a07; border:1px solid #33463a; border-radius:5px; padding:6px 8px; font-size:13px; line-height:1.4; font-weight:400; display:flex; flex-direction:column; justify-content:flex-end; }
+  #bLog { height:64px; overflow:hidden; margin:6px 0; background:#050a07; border:1px solid #33463a; border-radius:5px; padding:5px 8px; font-size:11.5px; line-height:1.35; font-weight:400; display:flex; flex-direction:column; justify-content:flex-end; }
   #bBtns { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
   #bBtns .act { min-width:96px; }
   .grid { display:grid; grid-template-columns:repeat(8,52px); gap:4px; justify-content:center; grid-auto-flow:row dense; }
@@ -264,6 +266,13 @@
     frost:   { name: 'Frost flask', d: 'Battle: damages and freezes the foe for 2 turns (not bosses)' },
     smoke:   { name: 'Smoke bomb', d: 'Battle: vanish from any fight except a boss' },
     stew:    { name: 'Hearty stew', d: 'Eat: restores most of your health and some magic' },
+    bow:     { name: 'Bow', d: 'Shoot arrows at monsters up to 4 hexes away (click it in your bag)' },
+    arrow:   { name: 'Arrows', d: 'Ammunition for a bow (kept in your quiver, not your bag)' },
+    farrow:  { name: 'Fire arrows', d: 'Arrows that burn: great against monsters in trees' },
+    iarrow:  { name: 'Ice arrows', d: 'Arrows that freeze a monster in place for a while' },
+    parrow:  { name: 'Poison arrows', d: 'Poison eats away at the monster with every step you take' },
+    ttorch:  { name: 'Burning torch', d: 'A quick torch lit from a fire: works like a torch but burns out after 5 tiles of travel' },
+    rebirth: { name: 'Draught of Rebirth', d: 'Drink it when you choose: refunds every skill point in your tree' },
     key:     { name: 'Old key', d: 'Opens a locked vault' },
     vine:    { name: 'Vine', d: 'Crafting: twist 2 into rope' },
     rope:    { name: 'Rope', d: 'Crafting: ladders and rafts' },
@@ -297,9 +306,17 @@
     { id: 'frost', needs: { water: 2, crystal: 1 }, skill: ['alchemy', 2] },
     { id: 'stew', needs: { cooked: 1, meat: 1, berries: 1 }, skill: ['alchemy', 2] },
     { id: 'crbomb', needs: { crystal: 2, bomb: 1 }, skill: ['artisan', 2] },
+    { id: 'bow', needs: { wood: 2, rope: 1 } },
+    { id: 'arrow', needs: { wood: 1, flint: 1 }, n: 5 },
+    { id: 'farrow', needs: { arrow: 3, flint: 1 }, n: 3, skill: ['fletch', 1] },
+    { id: 'iarrow', needs: { arrow: 3, crystal: 1 }, n: 3, skill: ['fletch', 2] },
+    { id: 'parrow', needs: { arrow: 3, shroom: 1 }, n: 3, skill: ['fletch', 3] },
   ];
+  // arrows live in a quiver (a counter), so a bundle of them does not fill your bag
+  const AMMO = { arrow: 1, farrow: 1, iarrow: 1, parrow: 1 };
+  const ammo = (k) => (P.ammo && P.ammo[k]) || 0;
   const CRAFTTABS = [['all', 'All'], ['wood', 'Wood'], ['vine', 'Rope & vine'], ['mine', 'Stone & iron'], ['crystal', 'Crystal'], ['food', 'Food & water'], ['hide', 'Hide']];
-  const CRAFTMATS = { cooked: 'food', meat: 'food', bomb: 'mine', wood: 'wood', rope: 'vine', vine: 'vine', stone: 'mine', iron: 'mine', flint: 'mine', crystal: 'crystal', berries: 'food', water: 'food', hide: 'hide' };
+  const CRAFTMATS = { arrow: 'wood', shroom: 'food', cooked: 'food', meat: 'food', bomb: 'mine', wood: 'wood', rope: 'vine', vine: 'vine', stone: 'mine', iron: 'mine', flint: 'mine', crystal: 'crystal', berries: 'food', water: 'food', hide: 'hide' };
   const recipeTabs = (r) => { const t = new Set(); for (const k in r.needs) if (CRAFTMATS[k]) t.add(CRAFTMATS[k]); return t; };
   const SPELLS = {
     fire:  { name: 'Fireball', cost: 4, d: 0,  desc: 'ignores armor' },
@@ -429,6 +446,7 @@
     { id: 'tough', br: 0, name: 'Toughness', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + 8 * r + ' max health' },
     { id: 'skin', br: 0, name: 'Iron Skin', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + r + ' defense' },
     { id: 'crit', br: 0, name: 'Keen Eye', max: 5, cost: [1, 2, 2, 3, 3], d: (r) => '+' + Math.min(79, 4 * r) + '% critical hit chance' },
+    { id: 'fletch', br: 0, name: 'Fletching', max: 3, cost: [2, 2, 3], d: (r) => ['', 'craft fire arrows', 'also craft ice arrows', 'also craft poison arrows'][Math.min(r, 3)] + (r ? '; arrows hit ' + 15 * r + '% harder' : '') },
     { id: 'wind', br: 0, name: 'Second Wind', max: 3, cost: [2, 3, 4], d: (r) => 'heal ' + 8 * r + '% of max health after every victory' },
     { id: 'mind', br: 1, name: 'Arcane Mind', max: 5, cost: [1, 1, 2, 2, 3], d: (r) => '+' + 4 * r + ' max magic' },
     { id: 'power', br: 1, name: 'Spell Power', max: 5, cost: [1, 2, 2, 3, 3], d: (r) => '+' + 15 * r + '% spell damage and healing' },
@@ -491,7 +509,7 @@
   let glows = [], mistT = 0, darkC = null;
   let best = 0; try { best = parseInt(localStorage.getItem('hexworld_g3_best') || '0', 10) || 0; } catch (e) {}
   // features that open up as the player finds space gems during a run
-  const UNLOCKS = [['merge', 5, 'ANIMAL BONDS', 'Matching animals can now join into one stronger animal'], ['warp', 10, 'SHRINE WARPING', 'Spend a crystal at a shrine to warp to another shrine'], ['hire', 15, 'HIRED HELP', 'Travellers will now offer to work for wages'], ['smith', 20, 'BLACKSMITHS', 'Smiths will now appear to reforge your gear']];
+  const UNLOCKS = [['merge', 5, 'ANIMAL BONDS', 'Matching animals can now join into one stronger animal'], ['warp', 10, 'SHRINE WARPING', 'Spend a crystal at a shrine to warp to another shrine'], ['hire', 15, 'HIRED HELP', 'Travellers will now offer to work for wages'], ['smith', 20, 'BLACKSMITHS', 'Smiths will now appear to reforge your gear'], ['stashcraft', 25, 'REMOTE STASH', 'Craft with items in your stash from anywhere, not just at shrines']];
   const unlockAt = (k) => UNLOCKS.find(u => u[0] === k)[1];
   const unlocked = (k) => S.gems >= unlockAt(k);
   const lockMsg = (k) => 'Unlocks at ' + unlockAt(k) + ' space gems (you have found ' + S.gems + ')';
@@ -510,9 +528,12 @@
   // blocked hexes (cave, wall, chasm...) are dead ends: the hexes behind them stay out of reach until you open them or find another way round
   // ...and the unrevealed hexes within 2 of a blocker stay sealed, so you cannot simply walk round it: open it with the right item
   // (torch, bomb, bridge...) or explore another direction. If every way forward is sealed, the seal loosens so a run can never get stuck.
-  const LOCKR = 2;
+  const LOCKR = 1;
+  // only terrain that needs an item seals its neighbours: caves, animals and fires do not
+  const SEAL = { wall: 1, chasm: 1, ice: 1, vault: 1, boulder: 1, cliff: 1, lake: 1, cdoor: 1 };
+  const sealing = (t) => !!t && !!SEAL[t.type];
   let lockLvl = LOCKR, lockDirty = true;
-  const nearBlock = (q, r, R) => { for (let dq = -R; dq <= R; dq++) for (let dr = Math.max(-R, -dq - R); dr <= Math.min(R, -dq + R); dr++) { if (!dq && !dr) continue; if (blocked(tiles.get(key(q + dq, r + dr)))) return true; } return false; };
+  const nearBlock = (q, r, R) => { for (let dq = -R; dq <= R; dq++) for (let dr = Math.max(-R, -dq - R); dr <= Math.min(R, -dq + R); dr++) { if (!dq && !dr) continue; const t = tiles.get(key(q + dq, r + dr)); if (sealing(t)) return t; } return null; };
   const candAt = (q, r, R) => !tiles.has(key(q, r)) && (!R || !nearBlock(q, r, R)) && DIRS.some(([a, b]) => { const t = tiles.get(key(q + a, r + b)); return !!t && !blocked(t); });
   function lockCheck() {   // only hexes you can actually walk to count: flood out from where you stand
     lockDirty = false; const st = tiles.get(key(guy.q, guy.r)); if (!st) { lockLvl = LOCKR; return; }
@@ -522,6 +543,15 @@
     lockLvl = 0;
   }
   let lockAt = '';
+  // why can't I go there? the sealed hex names the blocker that holds the key to it
+  function sealedBy(q, r) {
+    if (tiles.has(key(q, r)) || !lockLvl) return null;
+    if (!DIRS.some(([a, b]) => { const t = tiles.get(key(q + a, r + b)); return !!t && !blocked(t); })) return null;
+    return nearBlock(q, r, lockLvl);
+  }
+  const SEALHOW = { wall: 'blast it with a bomb', chasm: 'bridge it (2 wood next to it, or a crafted Bridge)', ice: 'melt it with fire or a campfire', vault: 'open it with a vault key', boulder: 'break it with a pickaxe', cliff: 'climb it with a ladder', lake: 'cross it with a raft', cdoor: 'open it with a crystal key' };
+  const TNAME = { wall: 'rock wall', chasm: 'chasm', ice: 'ice block', vault: 'vault', boulder: 'boulder', cliff: 'cliff', lake: 'lake', cdoor: 'crystal door' };
+  const sealMsg = (b) => 'Sealed off by the ' + TNAME[b.type] + ' next to it. Deal with the ' + TNAME[b.type] + ' first: ' + SEALHOW[b.type] + ', or explore another way.';
   const isCand = (q, r) => { const at = guy.q + ',' + guy.r + (S && S.cave ? 'c' : ''); if (lockDirty || at !== lockAt) { lockAt = at; lockCheck(); } return candAt(q, r, lockLvl); };
   const HINT = {
     wall: 'A solid rock wall. A bomb might open it... (craft: flint + stone + iron ore)',
@@ -543,8 +573,8 @@
   const esize = (e) => typeof e === 'string' ? isize(e) : 2;
   const ename = (e) => typeof e === 'string' ? ITEMS[e].name : e.name;
   const bagUsed = () => P.bag.reduce((s, e) => s + esize(e), 0);
-  // the stash is a flat list (saves stay compatible) but identical items share slots: up to 10 per slot
-  const STACK = 10;
+  // the stash is a flat list (saves stay compatible) but identical items share slots: up to 5 per slot
+  const STACK = 5;
   function stashSlots(arr) { let n = 0; const c = {}; for (const e of arr) { if (typeof e === 'string') c[e] = (c[e] || 0) + 1; else n += 2; } for (const k in c) n += isize(k) * Math.ceil(c[k] / STACK); return n; }
   const stashUsed = () => stashSlots(S.stash);
   const canStash = (e) => stashSlots(S.stash.concat([e])) <= S.stashCap;
@@ -588,11 +618,11 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ hire: null, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
-    d.S = Object.assign({ stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    d.S = Object.assign({ miles: 0, stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
     if (!d.S.mseed) d.S.mseed = (Math.random() * 4294967296) >>> 0;   // older saves get a soundtrack of their own
@@ -621,6 +651,9 @@
     if (!canSave()) return Promise.resolve(false);
     return idbDo('readonly', st => st.get('run')).then(d => { if (d && d.S && d.S.state === 'play' && d.tiles instanceof Map) { restoreRun(d); return true; } return false; }).catch(() => false);
   }
+  // the Hall shows each player's best run; a setting lets you see every one of your own runs among them
+  let hallMine = false; try { hallMine = localStorage.getItem('hexhallmine') === '1'; } catch (e) {}
+  function setHallMine(v) { hallMine = v; try { localStorage.setItem('hexhallmine', v ? '1' : '0'); } catch (e) {} }
   function hallTable(j) {
     if (!j || !j.top || !j.top.length) return '<div class="note">No one has entered the Hall of Greats yet. Be the first!</div>';
     let h = '<table class="hog"><tr><th></th><th>Name</th><th class="n">Tiles</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
@@ -628,15 +661,16 @@
     h += '</table>';
     const total = j.runs !== undefined ? j.runs : j.players, who = j.runs !== undefined ? ' run' + (total === 1 ? '' : 's') + ' by ' + j.players + ' explorer' + (j.players === 1 ? '' : 's') : ' explorer' + (total === 1 ? '' : 's');
     if (j.mine && !j.top.some(e => e.me)) h += '<div class="note">Your best: #' + j.mine.rank + ' of ' + total + ' (' + j.mine.tiles + ' tiles, level ' + j.mine.level + ')</div>';
-    else h += '<div class="note">' + total + who + ' from players everywhere. Ranked by tiles, then level, then gold. Your runs are highlighted.</div>';
+    else h += '<div class="note">' + total + who + ' from players everywhere. Ranked by tiles, then level, then gold. ' + (hallMine ? 'Every one of your runs is shown; other players show their best.' : 'Each player\'s best run is shown.') + ' Your runs are highlighted.</div>';
+    h += '<div style="text-align:center;margin-top:6px"><button class="act" data-hallmine="1">' + (hallMine ? 'Show only my best run' : 'Show all my runs') + '</button></div>';
     return h;
   }
   function loadBoard(el) {
     el.innerHTML = '<div class="note">Loading the Hall of Greats...</div>';
-    rpc('hx_board_all', { p_player: PID, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
+    rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 53;
+  const BUILD = 54;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -673,9 +707,9 @@
   const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, steps: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
   function newGame(noOnline) {
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
-    P = { hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
+    P = { ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
-    S = { state: 'play', revealed: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, unl: {}, mseed: (Math.random() * 4294967296) >>> 0, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 40, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
+    S = { state: 'play', revealed: 0, miles: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, unl: {}, mseed: (Math.random() * 4294967296) >>> 0, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 25, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
@@ -929,6 +963,7 @@
     if (mistCap()) { if (!quiet) toast('A dark mist blocks the way. Defeat ' + S.boss.m.name + ' to push further'); return null; }
     const t = genTile(q, r);
     tiles.set(key(q, r), t); S.revealed++;
+    if (S.revealed % 100 === 0 && S.revealed / 100 > (S.miles || 0)) { S.miles = S.revealed / 100; if (S.miles <= 5) showBanner('MILESTONE: ' + S.revealed + ' TILES', 'Gear can now be reforged, sharpened and plated up to +' + upCap()); }
     if (S.revealed % 2 === 0) P.mp = Math.min(maxMP(), P.mp + 1 + sk('flow'));
     stats.far = Math.max(stats.far, hd(q, r));
     const w = toWorld(q, r); burst(w.x, w.y, 10, ['#ffffff', '#9af7a8', '#4cd964'], 40, -20);
@@ -944,6 +979,7 @@
       lake: 'A deep lake. Something glints beneath the surface', cave: 'A CAVE! Light a torch (wood + flint) and you can go inside...', cdoor: 'A crystal door hums with power. It needs a crystal key',
       crystal: 'Crystal shards! Three make a crystal key', brazier: 'A cold brazier. Light it to weaken the boss seal', sigil: 'A sigil stone, guarded by a warden' };
     if (t.type === 'lair') toast('A BOSS LAIR rises! ' + S.boss.m.name + ' is sealed inside. ' + gateText() + '. The mist will close in at tile ' + S.boss.cap);
+    else if (t.type === 'bear' && !m) toast('A big hungry ' + animalOf(t) + ' sits here. Fighting it would be foolish. Maybe it would like a fish?');
     else if (MSG[t.type] && !m) toast(MSG[t.type]);
     else if (m) {
       if (S.revealed > 30 && rnd() < 0.15 && curTile().type !== 'shrine') { toast(m.name + ' ambushes you!'); startBattle(m, 'ambush'); }
@@ -995,13 +1031,13 @@
   }
   function equipFrom(t, i) {
     const g = t.loot[i], slot = slotFor(g);
-    const old = P.eq[slot]; P.eq[slot] = g; t.loot.splice(i, 1); if (old) t.loot.push(old);
+    const old = P.eq[slot]; P.eq[slot] = g; t.loot.splice(i, 1); if (old) { old.dropped = true; t.loot.push(old); }
     clampVitals(); hudDirty = true;
   }
   function equipBag(i) {
     const g = P.bag[i], slot = slotFor(g), old = P.eq[slot];
     P.bag.splice(i, 1); P.eq[slot] = g;
-    if (old && !giveItem(old)) curTile().loot.push(old);
+    if (old && !giveItem(old)) { old.dropped = true; curTile().loot.push(old); }
     clampVitals(); toast('Equipped ' + g.name); hudDirty = true;
   }
   function autoPickup(t) {
@@ -1009,7 +1045,7 @@
     for (let i = 0; i < t.loot.length; i++) {
       const it = t.loot[i];
       if (it.kind === 'item') { if (giveItem(it.id)) { got.push(ITEMS[it.id].name); t.loot.splice(i--, 1); } }
-      else { const s = it.slot; if (s === 'ring' ? (!P.eq.ring1 || !P.eq.ring2) : !P.eq[s]) { got.push(it.name); equipFrom(t, i--); } }
+      else if (!it.dropped) { const s = it.slot; if (s === 'ring' ? (!P.eq.ring1 || !P.eq.ring2) : !P.eq[s]) { got.push(it.name); equipFrom(t, i--); } }
     }
     if (t.graveXp) { const x = t.graveXp; t.graveXp = 0; gainXp(x); got.push(x + ' lost XP'); }
     if (t.grave && !t.loot.length) t.grave = false;
@@ -1091,11 +1127,13 @@
     $('spYes').onclick = () => { if (!hurt) { toast('You are already at full strength. Save it for later'); return; } drinkSpring(t); closeSpring(); };
     $('spNo').onclick = () => { closeSpring(); toast('You mark the spring. Return any time to heal'); };
   }
+  let floatOn = true; try { floatOn = localStorage.getItem('hexfloat') !== '0'; } catch (e) {}
+  const bobA = (t) => floatOn ? Math.sin(gt * 1.5 + t.phase) * 2.6 : 0;
   let autoEq = true; try { autoEq = localStorage.getItem('hexautoeq') !== '0'; } catch (e) {}
   function autoEquip(t) {
     if (!autoEq || !t || !t.loot || B) return; let any = true, n = 0;
     while (any && n < 9) { any = false; n++;
-      for (let i = 0; i < t.loot.length; i++) { const g = t.loot[i]; if (g.kind !== 'gear') continue; const sl = slotFor(g); if (gpower(g) > gpower(P.eq[sl])) { equipFrom(t, i); toast('Auto-equipped ' + g.name); any = true; break; } } }
+      for (let i = 0; i < t.loot.length; i++) { const g = t.loot[i]; if (g.kind !== 'gear' || g.dropped) continue; const sl = slotFor(g); if (gpower(g) > gpower(P.eq[sl])) { equipFrom(t, i); toast('Auto-equipped ' + g.name); any = true; break; } } }
     if (!t.loot.length) t.grave = false;
   }
   function onEnter(t) {
@@ -1159,11 +1197,15 @@
       A.push({ label: 'Rest by the fire', sub: t.rested ? 'already rested here' : '+40% health and magic, once per fire', better: !t.rested && P.hp < maxHP() * .7, off: t.rested ? 'You already rested at this fire' : P.hp >= maxHP() && P.mp >= maxMP() && 'Already at full strength', run() {
         t.rested = true; P.hp = Math.min(maxHP(), P.hp + Math.round(maxHP() * .4)); P.mp = Math.min(maxMP(), P.mp + Math.round(maxMP() * .4)); toast('You warm up by the fire (about ' + mins + ' min of fire left)'); } });
     }
+    { const fires = [t, ...DIRS.map(([a, b]) => tiles.get(key(t.q + a, t.r + b)))].filter(n => n && (n.type === 'campfire' || n.type === 'burning' || n.type === 'blaze' || (n.type === 'brazier' && n.lit)));
+      if (fires.length && countOf('wood') > 0 && !P.bag.includes('ttorch')) A.push({ label: 'Light a torch from the fire', sub: '1 wood · burns out after 5 tiles of travel', run() {
+        P.bag.splice(P.bag.indexOf('wood'), 1); P.bag.push('ttorch'); P.tt = 5; P.seen.ttorch = 1; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 10, FIRE, 20, -30);
+        toast('You light a burning torch. It works like a torch but burns out after 5 tiles of travel, so use it quickly!'); } }); }
     if (t.type === 'brazier' && !t.lit && S.boss) {
-      const hasT = countOf('torch') > 0, hasWF = countOf('wood') > 0 && countOf('flint') > 0;
+      const hasT = countOf('torch') > 0 || countOf('ttorch') > 0, hasWF = countOf('wood') > 0 && countOf('flint') > 0;
       A.push({ label: 'Light brazier', sub: 'torch, or wood + flint', better: hasT || hasWF, off: !(hasT || hasWF) && 'Needs a torch, or wood + flint', run() {
         const take = (k) => P.bag.splice(P.bag.indexOf(k), 1);
-        if (hasT) take('torch'); else { take('wood'); take('flint'); }
+        if (countOf('ttorch') > 0) take('ttorch'); else if (countOf('torch') > 0) take('torch'); else { take('wood'); take('flint'); }
         t.lit = true; S.boss.have++; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 20, FIRE, 40, -30);
         toast('The brazier roars to life! (' + S.boss.have + '/3)'); if (S.boss.have >= 3) openLair(); } });
       if (P.spells.fire) A.push({ label: 'Light with Fireball', sub: SPELLS.fire.cost + ' MP', off: P.mp < SPELLS.fire.cost && 'Not enough magic', run() {
@@ -1209,7 +1251,7 @@
       water();
     }
     if (t.type === 'hireling' && t.hire) { const hh = t.hire; A.push({ label: 'Talk to ' + hh.name, sub: hh.cls + ' · HP ' + hh.max + ' ATK ' + hh.atk + ' DEF ' + hh.def + ' · ' + hh.rate + ' gold per tile', hot: true, off: P.hire && 'You already employ ' + P.hire.name, run() { askHire('new', t); } }); }
-    if (t.type === 'smith') A.push({ label: 'Visit the blacksmith', sub: 'reforge gear: up to +' + SMITH_MAX + ' each', hot: true, run() { openSmith(); } });
+    if (t.type === 'smith') A.push({ label: 'Visit the blacksmith', sub: 'reforge gear: up to +' + upCap() + ' each', hot: true, run() { openSmith(); } });
     if (t.type === 'merchant') A.push({ label: 'Open shop', sub: t.stock.length + ' for sale · sell your spare items', hot: true, run() { openShop(); } });
     const gearL = t.loot.filter(x => x.kind === 'gear'), gearN = gearL.length, gp = (g) => { const cur = g.slot === 'ring' ? (gpower(P.eq.ring1) <= gpower(P.eq.ring2) ? P.eq.ring1 : P.eq.ring2) : P.eq[g.slot]; return gpower(g) - gpower(cur); };
     const bestG = gearN ? gearL.reduce((a, b) => gp(b) > gp(a) ? b : a) : null;
@@ -1305,7 +1347,7 @@
   }
   function fireTick() {
     for (const t of [...tiles.values()]) {
-      if (t.regrow && gt > t.regrow.at && (t.type === 'grass' || t.type === 'rubble') && !monAt(t.q, t.r) && !(t.q === guy.q && t.r === guy.r)) { t.type = t.regrow.type; t.units = t.type === 'crystal' ? 1 : 2; t.stump = false; t.regrow = null; t.born = gt; }
+      if (t.regrow && gt > t.regrow.at && (t.type === 'grass' || t.type === 'rubble') && !monAt(t.q, t.r) && !(t.q === guy.q && t.r === guy.r)) { t.type = t.regrow.type; t.units = t.type === 'crystal' ? 1 : 2; t.stump = false; t.regrow = null; { const p = toWorld(t.q, t.r); burst(p.x, p.y - 8, 10, t.type === 'crystal' ? ['#9fe8ff', '#ffffff'] : t.type === 'ore' || t.type === 'flint' ? ['#9a9ea8', '#d8d8e0'] : ['#7dff8f', '#3fb85a'], 18, -26, 6); } }
       if (t.type === 'river' && t.fish < 2 && gt > (t.fishAt || 0)) { t.fish++; t.fishAt = gt + 60; }
       if (t.type === 'trap' && t.sprung && gt > (t.sprungAt || 0) + 3) { t.type = 'grass'; t.sprung = false; }
       if ((t.type === 'river' || t.type === 'pool') && t.water !== undefined && t.water < WATERCAP[t.type] && gt > (t.waterAt || 0)) { t.water++; t.waterAt = gt + 90; }
@@ -1327,14 +1369,52 @@
     tidyLoadout();
     for (const k of SP_ORDER) if (P.spells[k] && P.loadout.length < spellSlots() && P.loadout.indexOf(k) < 0) P.loadout.push(k);
   }
-  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f' };
+  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f', 'a:arrow': '#f0e0c0', 'a:farrow': '#ff8a2a', 'a:iarrow': '#8ae0ff', 'a:parrow': '#9aff5a' };
   const SPHELP = { fire: 'On the map: hit a monster, melt ice, light braziers and dark caves, set trees alight. Range 3',
     frost: 'On the map: hit and freeze a monster, put out fires, freeze a lake solid to walk on. Range 3',
     bolt: 'On the map: heavy damage to a monster, shatter boulders. Range 3', drain: 'On the map: hit a monster and heal yourself. Range 3', heal: 'Heal yourself right now' };
   let aim = null, mapFx = [], wtxt = [];
   function lightBrazier(t, how) { t.lit = true; S.boss.have++; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 20, FIRE, 40, -30); toast(how + ' ignites the brazier! (' + S.boss.have + '/3)'); if (S.boss.have >= 3) openLair(); }
   function freezeLake(t) { t.type = 'lakeice'; stats.puzzles++; const g = ri(4, 9) + Math.floor(curD() / 6); P.gold += gm(g); stats.gold += g; if (rnd() < .5) t.loot.push({ kind: 'item', id: 'crystal' }); toast('The lake freezes solid. You can walk across it now! (+' + g + ' gold found in the ice)'); }
+  // ---------- bow and arrows: shoot a monster from a distance; a hit monster may come for you ----------
+  const BOWR = 4;
+  const aimRange = () => aim && aim.startsWith('a:') ? BOWR : spellRange();
+  function arrowUse(k, t) {
+    if (!t) return { why: 'Pick a monster' };
+    if (hd(t.q - guy.q, t.r - guy.r) > BOWR) return { why: 'Too far for your bow (range ' + BOWR + ')' };
+    const m = monAt(t.q, t.r); if (!m) return { why: 'Arrows are for monsters' };
+    if (m.boss) return { why: m.name + ' is too mighty to be felled by arrows. Face it!' };
+    if (atShrine()) return { why: 'You cannot shoot from a shrine' };
+    if (!ammo(k)) return { why: 'Your quiver has no ' + ITEMS[k].name.toLowerCase() };
+    return { fn: () => arrowHit(k, m), mon: true };
+  }
+  function arrowHit(k, m) {
+    if (!mons.has(key(m.q, m.r))) return;
+    const t = tiles.get(key(m.q, m.r)), el = { farrow: 'fire', iarrow: 'frost' }[k], cmb = el ? spellCombo(el, t) : null;
+    let d = (2 + pAtk() * .8) * (1 + .15 * sk('fletch')) * (.85 + .3 * rnd()) * (k === 'farrow' ? 1.25 : 1) * (cmb ? cmb.x : 1);
+    d = Math.max(1, Math.round(d - m.def * .4)); m.hp = Math.max(0, m.hp - d); stats.dealt += d;
+    wtxt.push({ x: m.x, y: m.y - 20, txt: String(d), col: { arrow: '#f0e0c0', farrow: '#ff8a2a', iarrow: '#8ae0ff', parrow: '#9aff5a' }[k], t: gt });
+    if (cmb) { wtxt.push({ x: m.x, y: m.y - 34, txt: cmb.tag, col: cmb.x >= 1 ? '#ffe14a' : '#9aa8b8', t: gt }); toast(cmb.msg); }
+    if (m.hp <= 0) { if (B) { m.hp = 1; return; } startBattle(m, 'map'); B.log = [m.name + ' falls to your arrow!']; winBattle(); return; }
+    if (k === 'iarrow') { const fz = 10 + (cmb && cmb.ice || 0); m.cool = gt + fz; m.iced = gt + fz; toast(m.name + ' is frozen in place for a while'); return; }
+    if (k === 'parrow') { m.poison = 6; m.poisonD = Math.max(2, Math.round(d * .35)); }
+    if (m.warden) return toast(m.name + ' is hit but guards its sigil');
+    if (rnd() < .5) { m.roam = true; m.hunted = true; m.cool = 0; toast(m.name + ' is hit and comes for you!' + (k === 'parrow' ? ' Poison is working on it' : '')); }
+    else toast(m.name + ' is hit but holds its ground' + (k === 'parrow' ? '. Poison is working on it' : ''));
+  }
+  // poison bites a little with every step you take
+  function poisonTick() {
+    for (const m of [...mons.values()]) { if (!m.poison) continue; m.poison--; m.hp = Math.max(1, m.hp - (m.poisonD || 2)); wtxt.push({ x: m.x, y: m.y - 20, txt: String(m.poisonD || 2), col: '#9aff5a', t: gt }); }
+  }
+  function shootAt(k, t) {
+    const u = arrowUse(k, t); if (!u.fn) { toast(u.why); if (!ammo(k)) { aim = null; hudDirty = true; } return; }
+    P.ammo[k]--; aim = null; hudDirty = true;
+    const a = toWorld(guy.q, guy.r), b = toWorld(t.q, t.r);
+    mapFx.push({ k: 'arrow', ak: k, x0: a.x, y0: a.y - 14 - elev(curTile()), x1: b.x, y1: b.y - 10 - elev(t), t0: gt, dur: .3 });
+    later(() => { if (S.state !== 'play') return; u.fn(); hudDirty = true; if (!B) roamTick(); }, 300);   // a shot takes a turn: monsters move one tile
+  }
   function spellUse(k, t) {
+    if (k.startsWith('a:')) return arrowUse(k.slice(2), t);
     if (!t) return { why: 'Pick a revealed tile' };
     if (hd(t.q - guy.q, t.r - guy.r) > spellRange()) return { why: 'Too far away (range ' + spellRange() + ')' };
     const m = monAt(t.q, t.r);
@@ -1395,6 +1475,7 @@
     if (aim) toast(SPELLS[k].name + ': click a highlighted target. Right-click or Esc to cancel');
   }
   function castAt(k, t) {
+    if (k.startsWith('a:')) return shootAt(k.slice(2), t);
     const sp = SPELLS[k]; if (P.mp < sp.cost) { toast('Not enough magic'); aim = null; hudDirty = true; return; }
     const u = spellUse(k, t); if (!u.fn) { toast(u.why); return; }
     P.mp -= sp.cost; stats.spells++; aim = null; hudDirty = true;
@@ -1407,21 +1488,24 @@
   const recipeKnown = (r) => P.known[r.id] || Object.keys(r.needs).every(k => P.seen[k]);
   const recipeHinted = (r) => recipeKnown(r) || Object.keys(r.needs).some(k => P.seen[k]);
   const recipeLock = (r) => r.skill && sk(r.skill[0]) < r.skill[1] ? SKILLS.find(x => x.id === r.skill[0]).name + ' skill rank ' + r.skill[1] : '';
+  const stashReach = () => atShrine() || unlocked('stashcraft');   // 25 gems: craft from your stash anywhere
+  const have = (k, withS) => AMMO[k] ? ammo(k) : countOf(k, withS);
   function craftCheck(r) {
-    const atS = atShrine();
+    const atS = stashReach();
     const lk = recipeLock(r); if (lk) return 'Needs ' + lk;
-    for (const k in r.needs) if (countOf(k, atS) < r.needs[k]) return 'Missing ' + ITEMS[k].name.toLowerCase();
-    let freed = 0; for (const k in r.needs) freed += Math.min(r.needs[k], countOf(k, false)) * isize(k);
+    for (const k in r.needs) if (have(k, atS) < r.needs[k]) return 'Missing ' + ITEMS[k].name.toLowerCase();
+    if (AMMO[r.id]) return '';
+    let freed = 0; for (const k in r.needs) if (!AMMO[k]) freed += Math.min(r.needs[k], countOf(k, false)) * isize(k);
     if (bagUsed() - freed + isize(r.id) <= P.bagCap) return '';
     if (atS && canStash(r.id)) return '';
     return 'No room in your bag';
   }
   function craft(id) {
     const r = RECIPES.find(x => x.id === id); if (!r || craftCheck(r)) return false;
-    for (const k in r.needs) for (let n = 0; n < r.needs[k]; n++) { const i = P.bag.indexOf(k); if (i >= 0) P.bag.splice(i, 1); else S.stash.splice(S.stash.indexOf(k), 1); }
-    if (!giveItem(id)) S.stash.push(id);
+    for (const k in r.needs) for (let n = 0; n < r.needs[k]; n++) { if (AMMO[k]) { P.ammo[k]--; continue; } const i = P.bag.indexOf(k); if (i >= 0) P.bag.splice(i, 1); else S.stash.splice(S.stash.indexOf(k), 1); }
+    if (AMMO[id]) P.ammo[id] = ammo(id) + (r.n || 1); else if (!giveItem(id)) S.stash.push(id);
     P.seen[id] = 1; P.known[id] = 1; stats.crafted++; bagSel = null;
-    toast('Crafted: ' + ITEMS[id].name + '!'); hudDirty = true;
+    toast('Crafted: ' + (r.n ? r.n + ' ' : '') + ITEMS[id].name + '!' + (AMMO[id] ? ' (quiver: ' + ammo(id) + ')' : '')); hudDirty = true;
     const w = toWorld(guy.q, guy.r); burst(w.x, w.y - 14, 14, ['#c8b8ff', '#ffffff', '#ffe14a'], 30, -30, 20);
     return true;
   }
@@ -1436,7 +1520,7 @@
       const cur = P.eq[slotFor(e)];
       O.push({ label: 'Equip ' + e.name, sub: gearDesc(e) + (cur ? ' (now: ' + gearDesc(cur) + ')' : ''), better: gpower(e) > gpower(cur), insp: e, list: P.bag.filter(x => typeof x !== 'string'), run() { equipBag(P.bag.indexOf(e)); } });
       if (atShrine()) O.push({ label: 'Put in stash', sub: '2 slots', hot: true, run() { bagToStash(P.bag.indexOf(e)); } });
-      O.push({ label: 'Drop', sub: 'leave it on this hex', run() { P.bag.splice(P.bag.indexOf(e), 1); curTile().loot.push(e); toast('Dropped ' + e.name); } });
+      O.push({ label: 'Drop', sub: 'leave it on this hex', run() { P.bag.splice(P.bag.indexOf(e), 1); e.dropped = true; curTile().loot.push(e); toast('Dropped ' + e.name); } });
       O.push(cancel); return O;
     }
     const id = e;
@@ -1473,7 +1557,10 @@
     if (id === 'key') { const v = near('vault');
       O.push({ label: 'Use: unlock vault', sub: 'opens a locked vault', better: !!v, off: !v && 'Stand next to a locked vault', run() {
         spend(); v.type = 'chest'; v.safe = true; v.rich = true; v.vault = true; stats.puzzles++; toast('Click! The vault door swings open. Step inside!'); } }); }
-    if (id === 'torch') { const c = near('cave');
+    if (id === 'rebirth') O.push({ label: 'Use: drink the Draught of Rebirth', sub: 'refund every skill point in your tree', better: !respecBlock(), off: respecBlock(), run() { spend(); respecSkills(); toast('Your skills dissolve and all your points return (press K)'); } });
+    if (id === 'bow') { const A2 = [['arrow', 'an arrow'], ['farrow', 'a fire arrow'], ['iarrow', 'an ice arrow'], ['parrow', 'a poison arrow']];
+      for (const [k, nm] of A2) if (ammo(k) || k === 'arrow') O.push({ label: 'Shoot ' + nm, sub: ammo(k) + ' in your quiver · range ' + BOWR, better: ammo(k) > 0, off: !ammo(k) ? 'No ' + ITEMS[k].name.toLowerCase() + ': craft them (wood + flint makes 5)' : atShrine() && 'You cannot shoot from a shrine', run() { aim = 'a:' + k; hudDirty = true; toast('Aim: click a monster within ' + BOWR + ' hexes. Right-click or Esc to cancel'); } }); }
+    if (id === 'torch' || id === 'ttorch') { const c = near('cave');
       O.push({ label: 'Use: light the cave', sub: 'the torch is used up', better: !!c, off: !c && 'Stand next to a dark cave', run() { spend(); lightCave(c); } }); }
     if (id === 'pickaxe') { const b = near('boulder');
       O.push({ label: 'Use: smash boulder', sub: 'the pickaxe is kept', better: !!b, off: !b && 'Stand next to a boulder', run() { smashBoulder(b); } }); }
@@ -1490,10 +1577,10 @@
         const p = toWorld(c.q, c.r); burst(p.x, p.y - 10, 40, ['#7ae8ff', '#ffffff', '#c8b8ff'], 70, -40, 20);
         toast('The crystal door dissolves into light. Legendary treasure awaits!'); } }); }
     if (id === 'stone') { const w = P.eq.weapon;
-      O.push({ label: 'Use: sharpen weapon', sub: w ? '+1 ATK to ' + w.name + ' (' + (w.sharp || 0) + '/3)' : '', off: (!w && 'You have no weapon') || (w.sharp >= 3 && 'It is as sharp as it gets'),
+      O.push({ label: 'Use: sharpen weapon', sub: w ? '+1 ATK to ' + w.name + ' (' + (w.sharp || 0) + '/' + upCap() + ')' : '', off: (!w && 'You have no weapon') || ((w.sharp || 0) >= upCap() && 'It is as sharp as it gets for now (more at the next 100-tile milestone)'),
         run() { spend(); w.atk++; w.sharp = (w.sharp || 0) + 1; toast(w.name + ' sharpened: ATK +' + w.atk); } }); }
     if (id === 'iron') { const a = P.eq.chest;
-      O.push({ label: 'Use: reinforce armor', sub: a ? '+1 DEF to ' + a.name + ' (' + (a.plate || 0) + '/3)' : '', off: (!a && 'You need chest armor') || (a.plate >= 3 && 'It cannot take more plating'),
+      O.push({ label: 'Use: reinforce armor', sub: a ? '+1 DEF to ' + a.name + ' (' + (a.plate || 0) + '/' + upCap() + ')' : '', off: (!a && 'You need chest armor') || ((a.plate || 0) >= upCap() && 'It cannot take more plating for now (more at the next 100-tile milestone)'),
         run() { spend(); a.def++; a.plate = (a.plate || 0) + 1; toast(a.name + ' reinforced: DEF +' + a.def); } }); }
     for (const r of RECIPES) if (r.needs[id] && recipeKnown(r)) {
       const why = craftCheck(r);
@@ -1558,7 +1645,7 @@
     if (!canStash(g)) { toast('Your stash is full'); return; }
     P.eq[slot] = null; S.stash.push(g); clampVitals(); hudDirty = true; renderStash();
   }
-  const stashCost = () => 60 + 40 * ((S.stashCap - 40) / 10);
+  const stashCost = () => 60 + 45 * Math.max(0, Math.round((S.stashCap - 25) / 5));   // +5 slots each time, a little dearer every time
   function openStash() { if (!atShrine() || TEST) return; stashOpen = true; $('stash').style.display = 'flex'; renderStash(); }
   function closeStash() { stashOpen = false; $('stash').style.display = 'none'; hudDirty = true; }
 
@@ -1836,14 +1923,15 @@
     const m = monAt(path[1].q, path[1].r);
     if (m) { startBattle(m); return; }
     const nt = tiles.get(key(path[1].q, path[1].r));
-    if (blocked(nt)) { toast(HINT[nt.type]); if (NEEDS[nt.type]) NEEDS[nt.type].forEach(k => P.known[k] = 1); guy.target = null; guy.pending = null; return; }
+    if (blocked(nt)) { toast(nt.type === 'bear' ? 'The ' + animalOf(nt) + ' growls and will not budge. It looks hungry... maybe a fish?' : HINT[nt.type]); if (NEEDS[nt.type]) NEEDS[nt.type].forEach(k => P.known[k] = 1); guy.target = null; guy.pending = null; return; }
     guy.mv = { from: { q: guy.q, r: guy.r }, to: path[1], prog: 0 };
     const a = toWorld(guy.q, guy.r), b = toWorld(path[1].q, path[1].r); if (Math.abs(b.x - a.x) > 1) guy.face = b.x > a.x ? 1 : -1;
   }
   function finishStep() {
     const mv = guy.mv; guy.prev = mv.from; if (pet) { pet.q = mv.from.q; pet.r = mv.from.r; }
     guy.q = mv.to.q; guy.r = mv.to.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null;
-    stats.steps++; if (P.hire) P.hire.left--; petHunger();
+    stats.steps++; if (P.hire) P.hire.left--; petHunger(); poisonTick();
+    if (P.tt > 0 && P.bag.includes('ttorch')) { P.tt--; if (P.tt <= 0) { P.bag.splice(P.bag.indexOf('ttorch'), 1); toast('Your burning torch sputters out'); } else if (P.tt <= 2) toast('Your burning torch is nearly out (' + P.tt + ' tile' + (P.tt > 1 ? 's' : '') + ' left)'); }
     onEnter(curTile()); hudDirty = true;
     if (!B && S.state === 'play') roamTick();   // monsters take one tile for every tile you take
     warmScan(); lockDirty = true;
@@ -2693,18 +2781,33 @@
 
   // ---- characters ----
   function heroSpec(e, fr) {
-    const cap = e.helmet ? e.helmet.col : '#d0343a', tun = e.chest ? e.chest.col : '#3462c0', leg = e.legs ? shade(e.legs.col, -.25) : '#3a3048', bt = e.boots ? shade(e.boots.col, -.1) : '#5a321c';
-    const lx = fr ? [[-3.6, .25], [3.6, -.25]] : [[-2.6, 0], [2.6, 0]], pr = [
-      { x: 0, y: -19, rx: 7.5, ry: 12, rz: 3, z: -4.5, p: 3, c: '#a82a32' },
-      ...lx.map(([x, a]) => ({ x, y: -7, rx: 2.4, ry: 5.5, rz: 2.4, a, p: 3, c: leg })), ...lx.map(([x]) => ({ x: x * 1.08, y: -2, rx: 3, ry: 2.2, rz: 3.2, z: .6, p: 3, c: bt })),
-      { x: 0, y: -16.5, rx: 6, ry: 6.5, rz: 4.6, p: 3, c: tun, tex: .12 }, { x: 0, y: -11.5, rx: 6.3, ry: 1.2, rz: 4.9, p: 6, c: '#5a321c' }, { x: 0, y: -11.5, rx: 1.3, ry: 1.1, rz: .8, z: 4.6, p: 5, c: GOLDR, spec: .8 },
-      { x: -7, y: -16, rx: 2.1, ry: 5.2, rz: 2.2, a: .18, p: 3, c: tun }, { x: 7, y: -16, rx: 2.1, ry: 5.2, rz: 2.2, a: -.18, p: 3, c: tun }, { x: -8, y: -10.5, rx: 1.9, ry: 1.9, rz: 1.9, c: SKINC }];
+    // a little adventurer: cape, tapered tunic or armour with shoulder pads, belt, boots with cuffs, a lit face with a nose,
+    // and either a red bandana (no helmet) or a domed helmet in the helmet's colour with a rim, nose guard and plume
+    const tun = e.chest ? e.chest.col : '#3462c0', leg = e.legs ? shade(e.legs.col, -.25) : '#3a3048', bt = e.boots ? shade(e.boots.col, -.1) : '#5a321c', hair = '#5a3418';
+    const lx = fr ? [[-3.6, .25], [3.6, -.25]] : [[-2.5, 0], [2.5, 0]], FACE = { amb: .5, dif: .6 };
+    const pr = [
+      { x: 0, y: -18, rx: 7.6, ry: 12.5, rz: 3, z: -5, p: 3, c: '#9a2530', tex: .15 },
+      ...lx.map(([x, a]) => ({ x, y: -7, rx: 2.3, ry: 5.4, rz: 2.4, a, p: 3, c: leg })),
+      ...lx.map(([x]) => ({ x: x * 1.08, y: -2.3, rx: 3, ry: 2.5, rz: 3.2, z: .6, p: 3, c: bt })), ...lx.map(([x]) => ({ x: x * 1.05, y: -4.7, rx: 2.8, ry: .8, rz: 3, z: .6, p: 4, c: shade(bt, .18) })),
+      { x: 0, y: -9.3, rx: 6, ry: 2.6, rz: 4.5, p: 3, c: shade(tun, -.14) },
+      { x: 0, y: -12.8, rx: 5.2, ry: 2.9, rz: 4.2, p: 3, c: shade(tun, -.05), tex: .1 },
+      { x: 0, y: -17.2, rx: 6.3, ry: 5.4, rz: 4.6, p: 3, c: tun, tex: .12 },
+      { x: 0, y: -11.2, rx: 5.7, ry: 1.1, rz: 4.6, p: 6, c: '#4a2a14' }, { x: 0, y: -11.2, rx: 1.3, ry: 1.1, rz: .8, z: 4.4, p: 5, c: GOLDR, spec: .8 },
+      { x: -7.2, y: -15.4, rx: 1.8, ry: 4.8, rz: 2, a: .16, p: 3, c: shade(tun, -.2) }, { x: 7.2, y: -15.4, rx: 1.8, ry: 4.8, rz: 2, a: -.16, p: 3, c: shade(tun, -.2) },
+      { x: -6.5, y: -20.4, rx: 2.9, ry: 2.2, rz: 3.3, p: 2.2, c: shade(tun, .14), spec: .3 }, { x: 6.5, y: -20.4, rx: 2.9, ry: 2.2, rz: 3.3, p: 2.2, c: shade(tun, .14), spec: .3 },
+      { x: -8, y: -10.4, rx: 1.9, ry: 1.9, rz: 1.9, c: SKINC, ...FACE }];
     if (e.weapon) pr.push({ x: 11.5, y: -19, rx: 1.1, ry: 8.5, rz: .7, z: 1.5, a: .25, p: 6, c: e.weapon.col, spec: 1, sh: 40 }, { x: 9.4, y: -11.6, rx: 3, ry: .8, rz: 1, z: 1.6, a: .25, p: 6, c: GOLDR, spec: .8 });
-    pr.push({ x: 8.2, y: -10.5, rx: 1.9, ry: 1.9, rz: 1.9, z: 1, c: SKINC });
+    pr.push({ x: 8.1, y: -10.4, rx: 1.9, ry: 1.9, rz: 1.9, z: 1, c: SKINC, ...FACE });
     if (e.shield) pr.push({ x: -9.5, y: -14, rx: 4.2, ry: 5.6, rz: 1.8, z: 3.5, p: 2.6, c: e.shield.col, spec: .5 }, { x: -9.5, y: -14, rx: 1.4, ry: 1.4, rz: 1, z: 5.2, c: GOLDR, spec: 1 });
-    pr.push({ x: -5.8, y: -27, rx: 1.6, ry: 3, rz: 3, z: -1, c: '#6a3a1c' }, { x: 5.8, y: -27, rx: 1.6, ry: 3, rz: 3, z: -1, c: '#6a3a1c' }, { x: 0, y: -28, rx: 6.2, ry: 6, rz: 5.6, z: .5, c: SKINC },
-      { x: 0, y: -32, rx: 6.6, ry: 4, rz: 6, c: cap, spec: .3 }, { x: 2.5, y: -30, rx: 6, ry: 1.1, rz: 5.4, z: 1.6, p: 4, c: cap });
-    return { w: 42, h: 58, ax: 19, ay: 54, top: .68, prims: pr, post: eyesP([[-2.1, -27.4], [2.4, -27.4]], 1) };
+    pr.push({ x: 0, y: -22.6, rx: 2.3, ry: 1.6, rz: 2.2, c: shade(SKINC, -.12), ...FACE },
+      { x: -5.4, y: -28.6, rx: 1.5, ry: 3.2, rz: 3, z: -1, c: hair }, { x: 5.4, y: -28.6, rx: 1.5, ry: 3.2, rz: 3, z: -1, c: hair },
+      { x: 0, y: -28, rx: 5.9, ry: 5.9, rz: 5.5, z: .5, c: SKINC, ...FACE },
+      { x: .5, y: -26.3, rx: 1, ry: 1.2, rz: 1, z: 5.7, c: shade(SKINC, -.04), ...FACE });
+    if (e.helmet) { const hc = e.helmet.col;
+      pr.push({ x: 0, y: -31.6, rx: 6.6, ry: 4.6, rz: 6.2, c: hc, spec: .7, sh: 30 }, { x: 0, y: -29.3, rx: 6.9, ry: 1, rz: 6.5, p: 5, c: shade(hc, -.22), spec: .4 },
+        { x: .5, y: -28, rx: .6, ry: 1.9, rz: .6, z: 6.4, p: 4, c: shade(hc, -.1), spec: .6 }, { x: 0, y: -37.2, rx: 1.3, ry: 2.6, rz: 1.3, a: -.2, c: '#d0343a', tex: .2 });
+    } else pr.push({ x: .3, y: -31.4, rx: 6.3, ry: 3.6, rz: 5.9, c: '#c8303a' }, { x: 0, y: -29.9, rx: 6.4, ry: 1.1, rz: 6.1, p: 5, c: '#a02630' }, { x: -6.6, y: -28.5, rx: 1.1, ry: 2.6, rz: .8, a: .5, z: -.5, c: '#c8303a' });
+    return { w: 42, h: 60, ax: 19, ay: 56, top: .68, prims: pr, post: eyesP([[-2.1, -27.6], [2.5, -27.6]], 1) };
   }
   const heroKey = (fr, f) => { const e = P.eq; return 'H|' + [e.helmet && e.helmet.col, e.chest && e.chest.col, e.legs && e.legs.col, e.boots && e.boots.col, e.weapon && e.weapon.col, e.shield && e.shield.col, fr, f].join('|'); };
   function heroLP(fr, f) {
@@ -2836,7 +2939,7 @@
       G.fillStyle = '#0a0a0c'; G.fillRect(fx(sx - sc, 6 * sc), sy - sc, 6 * sc, 8 * sc); G.fillStyle = col; G.fillRect(fx(sx, 4 * sc), sy, 4 * sc, 6 * sc); G.fillStyle = shade(col, .4); G.fillRect(fx(sx, sc), sy, sc, 5 * sc); }
   }
   function drawGuy(ox, oy) {
-    const mv = guy.mv, bobT = (q, r) => { const t = tiles.get(key(q, r)); return t ? Math.sin(gt * 1.5 + t.phase) * 2.6 - elev(t) : 0; };
+    const mv = guy.mv, bobT = (q, r) => { const t = tiles.get(key(q, r)); return t ? bobA(t) - elev(t) : 0; };
     const bob = mv ? bobT(mv.from.q, mv.from.r) + (bobT(mv.to.q, mv.to.r) - bobT(mv.from.q, mv.from.r)) * Math.min(1, mv.prog) : bobT(guy.q, guy.r);
     const hop = mv ? -Math.round(Math.abs(Math.sin(guy.walkT * 12)) * 2) : 0, gx = guy.x + ox, gy = guy.y + oy + bob;
     ell(gx, gy, 6, 2, 'rgba(0,20,8,0.45)');
@@ -2844,7 +2947,7 @@
     drawHeroAt(gx, gy + hop + breathe * 0, guy.face, !!mv, Math.floor(guy.walkT * 8) % 2);
   }
   function drawMon(m, ox, oy) {
-    const t = tiles.get(key(m.q, m.r)), bob = t ? Math.sin(gt * 1.5 + t.phase) * 2.6 - elev(t) : 0;
+    const t = tiles.get(key(m.q, m.r)), bob = t ? bobA(t) - elev(t) : 0;
     const L = monLP(m, m.boss ? 1.8 : 1), cx = m.x + ox, cy = m.y + oy + bob, hop = L ? (L.float ? 3 + Math.sin(gt * 2.4 + m.q) * 1.5 : Math.abs(Math.sin(gt * 3 + m.q)) * 1) : Math.round(Math.abs(Math.sin(gt * 3 + m.q)) * 1.5);
     const c = L ? { width: L.pw, height: L.ph } : monCanvas(m), ms = L ? 1 : m.boss ? 2 : 1;
     ell(cx, cy, Math.ceil(c.width * ms / 2.4), 2, 'rgba(0,20,8,0.45)');
@@ -2861,7 +2964,7 @@
     text(String(m.L), cx + Math.ceil(c.width * ms / 2) + 2, cy - c.height * ms + 2 - hop, m.elite || m.boss ? '#ffe14a' : '#d0d0d0');
   }
   function drawPet(ox, oy) {
-    const t = tiles.get(key(pet.q, pet.r)), bob = t ? Math.sin(gt * 1.5 + t.phase) * 2.6 - elev(t) : 0, w = toWorld(pet.q, pet.r);
+    const t = tiles.get(key(pet.q, pet.r)), bob = t ? bobA(t) - elev(t) : 0, w = toWorld(pet.q, pet.r);
     const moving = Math.abs(w.x - pet.x) + Math.abs(w.y - pet.y) > 1, hop = moving ? Math.round(Math.abs(Math.sin(gt * 10)) * 2) : 0;
     const bx = pet.x + ox, by = pet.y + oy + bob;
     ell(bx, by, 8, 2, 'rgba(0,20,8,0.45)');
@@ -2881,6 +2984,11 @@
   IM.frost = [IM.mpot[0], { g: '#e8f8ff', b: '#3aa8e8', B: '#d0f4ff' }];
   IM.smoke = [["..w.w.....", ".w.w.w....", "..wwww....", "...ssss...", "..sSssss..", ".sSssssss.", ".ssssssss.", "..ssssss..", "...ssss...", ".........."], { w: '#eeeef6', s: '#6a6e7a', S: '#b4bac8' }];
   IM.stew = [["...w..w...", "....w..w..", "..........", ".yyyyyyyy.", "yYoooooooy", "yooooOoooy", ".yooooooy.", "..yyyyyy..", "...yyyy...", ".........."], { w: '#eeeef6', y: '#a8723a', Y: '#d8a060', o: '#c8642a', O: '#ff9a4a' }];
+  IM.bow = [["......ww..", ".....w.s..", "....w..s..", "...w...s..", "..w....s..", "..w....s..", "...w...s..", "....w..s..", ".....w.s..", "......ww.."], { w: '#a8723a', s: '#e8e8f0' }];
+  const arrowIc = (h) => [["........hh", ".......hhh", "......shh.", ".....s.h..", "....s.....", "...s......", "ff.s......", ".fs.......", "f.f.......", ".........."], { s: '#c8a060', h, f: '#e8e8f0' }];
+  IM.arrow = arrowIc('#b8bcc8'); IM.farrow = arrowIc('#ff7a2a'); IM.iarrow = arrowIc('#8ae0ff'); IM.parrow = arrowIc('#7aff4a');
+  IM.ttorch = [IM.torch[0], { w: '#6a4020', f: '#ff4a1a', y: '#ffd23a' }];
+  IM.rebirth = [IM.mpot[0], { g: '#fff4d0', b: '#ffd23a', B: '#ffffff' }];
   function buildIcons() { for (const k in IM) { ICONC[k] = iconFrom(IM[k][0], IM[k][1]); ICONURL[k] = ICONC[k].toDataURL(); } }
   function gearIconC(g) {
     const k = g.slot + g.col + (g.gem || ''); if (GIC[k]) return GIC[k].c;
@@ -2982,18 +3090,18 @@
       if (m) s = m.name + ' Lv ' + m.L + ' · looks ' + threatWord(m) + (m.trait ? ' · ' + TRAITS[m.trait] : '') + (m.roam ? ' · hunter' : '') + (m.heldXp ? ' · holds your XP' : '');
       else if (hoverT.grave) s = 'Your grave: walk here to recover your things';
       else if (hoverT.loot.length) s += ' · ' + hoverT.loot.map(i => i.kind === 'gear' ? i.name : ITEMS[i.id].name).slice(0, 3).join(', ');
-      if (aim) { const u = spellUse(aim, hoverT); s = u.fn ? 'Cast ' + SPELLS[aim].name + ' here' + (sel ? ' · tap again to confirm' : '') : u.why; }
+      if (aim) { const u = spellUse(aim, hoverT); s = u.fn ? (aim.startsWith('a:') ? 'Shoot ' + ITEMS[aim.slice(2)].name.toLowerCase() + ' here' : 'Cast ' + SPELLS[aim].name + ' here') + (sel ? ' · tap again to confirm' : '') : u.why; }
       else if (sel) s += ' · tap again to go';
       setTip(s);
     } else if (warpMode) { const c = mouse.x > -900 ? cellAtMouse() : null, e = c && warpMode.list.find(x => x.t.q === c.q && x.t.r === c.r); setTip(e ? 'Click to warp here · ' + e.d + ' tiles away' : 'Choose a glowing shrine (Esc to cancel)'); }
-    else if (aim) setTip('Choose a highlighted target for ' + SPELLS[aim].name + ' (Esc to cancel)');
+    else if (aim) setTip('Choose a highlighted target for ' + (aim.startsWith('a:') ? ITEMS[aim.slice(2)].name.toLowerCase() : SPELLS[aim].name) + ' (Esc to cancel)');
     else if (hoverC) setTip(mistCap() ? 'Dark mist: defeat ' + S.boss.m.name + ' to explore further' : hd(hoverC.q - guy.q, hoverC.r - guy.r) === 1 ? (sel ? 'Tap again to reveal' : 'Click to reveal') : (sel ? 'Tap again to walk there and reveal' : 'Click to walk there and reveal')); else setTip('');
 
     const list = [];
     for (const t of tiles.values()) { const w = toWorld(t.q, t.r), sx = w.x + ox, sy = w.y + oy; if (sx < -50 || sx > W + 50 || sy < -60 || sy > H + 70) continue; list.push({ t, w, y: w.y }); }
     for (const m of mons.values()) { const sx = m.x + ox, sy = m.y + oy; if (sx < -60 || sx > W + 60 || sy < -80 || sy > H + 80) continue; list.push({ m, y: m.y + .3 }); }
     list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 }); if (P.hire && hirePos) list.push({ hired: 1, y: hirePos.y + .4 });
-    if (S.state === 'play' && !guy.mv && !caveFull() && !warpMode) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); }
+    if (S.state === 'play' && !guy.mv && !caveFull() && !warpMode) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); else if (sealedBy(q, r)) list.push({ cand: 1, sealed: 1, q, r, y: toWorld(q, r).y - .1 }); }
     if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
     list.sort((a, b) => a.y - b.y);
     for (const it of list) {
@@ -3002,11 +3110,12 @@
       else if (it.hired) drawHired(ox, oy);
       else if (it.m) drawMon(it.m, ox, oy);
       else if (it.cand) { const w = toWorld(it.q, it.r), hv = hoverC && hoverC.q === it.q && hoverC.r === it.r, pul = .5 + .5 * Math.sin(gt * 4);
-        if (hv) { outlineHex(Math.round(w.x) + ox, Math.round(w.y) + oy, Math.sin(gt * 6) > 0 ? '#ffffff' : '#9fe8ff', 'rgba(140,255,170,0.14)'); glow(Math.round(w.x) + ox, Math.round(w.y) + oy, 30, '#7dff8f', .3); }
+        if (it.sealed) { const x = Math.round(w.x) + ox, y = Math.round(w.y) + oy; outlineHex(x, y, '#5a3030', 'rgba(60,20,20,0.25)'); px(x - 3, y - 4, 6, 5, '#b89070'); px(x - 2, y - 7, 1, 3, '#b89070'); px(x + 1, y - 7, 1, 3, '#b89070'); px(x - 1, y - 8, 2, 1, '#b89070'); px(x - 1, y - 3, 2, 2, '#3a2010'); }
+        else if (hv) { outlineHex(Math.round(w.x) + ox, Math.round(w.y) + oy, Math.sin(gt * 6) > 0 ? '#ffffff' : '#9fe8ff', 'rgba(140,255,170,0.14)'); glow(Math.round(w.x) + ox, Math.round(w.y) + oy, 30, '#7dff8f', .3); }
         else if (mistCap()) { outlineHex(Math.round(w.x) + ox, Math.round(w.y) + oy, pul > .5 ? '#5a2a7a' : '#40205a', 'rgba(60,20,90,0.35)'); }
         else outlineHex(Math.round(w.x) + ox, Math.round(w.y) + oy, pul > .5 ? '#2f7a44' : '#24603a'); }
       else { const t = it.t, k = Math.min(1, (gt - t.born) / .45), drop = k < 1 ? -Math.round(30 * (1 - k) * (1 - k)) : 0;
-        const cx = it.w.x + ox, cy = it.w.y + oy + Math.sin(gt * 1.5 + t.phase) * 2.6 + drop;
+        const cx = it.w.x + ox, cy = it.w.y + oy + bobA(t) + drop;
         if (k < 1) G.globalAlpha = k;
         drawTile(t, cx, cy);
         drawObject(t, cx, cy);
@@ -3025,7 +3134,7 @@
     }
     if (aim && S.state === 'play' && !busy) {
       const pul = Math.sin(gt * 6) > 0;
-      for (const t of tiles.values()) { if (hd(t.q - guy.q, t.r - guy.r) > spellRange()) continue; const u = spellUse(aim, t); if (!u.fn) continue; const w = toWorld(t.q, t.r), cx = Math.round(w.x) + ox, cy = Math.round(w.y) + oy + Math.round(Math.sin(gt * 1.5 + t.phase) * 2.6) - elev(t);
+      for (const t of tiles.values()) { if (hd(t.q - guy.q, t.r - guy.r) > aimRange()) continue; const u = spellUse(aim, t); if (!u.fn) continue; const w = toWorld(t.q, t.r), cx = Math.round(w.x) + ox, cy = Math.round(w.y) + oy + Math.round(bobA(t)) - elev(t);
         outlineHex(cx, cy, pul ? SPCOL[aim] : '#ffffff'); glow(cx, cy, 22, SPCOL[aim], .25); }
     }
     if (sel && S.state === 'play' && !busy) {
@@ -3035,7 +3144,10 @@
     }
     mapFx = mapFx.filter(f => gt - f.t0 < f.dur + .05);
     for (const f of mapFx) { const p = Math.min(1, (gt - f.t0) / f.dur);
-      if (f.k === 'bolt') { if (p > .3) { let x = f.x1, y = f.y1 - 140; for (let i = 0; i < 12; i++) { const nx = f.x1 + (hash(i + Math.floor(gt * 40)) - .5) * 14, ny = y + 12; line(x + ox, y + oy, nx + ox, ny + oy, i % 2 ? '#ffffff' : '#ffe14a'); x = nx; y = ny; } glow(f.x1 + ox, f.y1 + oy, 40, '#ffe14a', .7); } }
+      if (f.k === 'arrow') { const x = f.x0 + (f.x1 - f.x0) * p, y = f.y0 + (f.y1 - f.y0) * p - Math.sin(p * Math.PI) * 10, dx = f.x1 - f.x0, dy = f.y1 - f.y0, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+        line(x - ux * 9 + ox, y - uy * 9 + oy, x + ox, y + oy, '#c8a060'); px(x + ox - 1, y + oy - 1, 3, 3, { arrow: '#e8e8f0', farrow: '#ff8a2a', iarrow: '#8ae0ff', parrow: '#9aff5a' }[f.ak]);
+        if (f.ak !== 'arrow') glow(x + ox, y + oy, 12, { farrow: '#ff8a2a', iarrow: '#8ae0ff', parrow: '#9aff5a' }[f.ak], .6); }
+      else if (f.k === 'bolt') { if (p > .3) { let x = f.x1, y = f.y1 - 140; for (let i = 0; i < 12; i++) { const nx = f.x1 + (hash(i + Math.floor(gt * 40)) - .5) * 14, ny = y + 12; line(x + ox, y + oy, nx + ox, ny + oy, i % 2 ? '#ffffff' : '#ffe14a'); x = nx; y = ny; } glow(f.x1 + ox, f.y1 + oy, 40, '#ffe14a', .7); } }
       else if (f.k === 'drain') { for (let i = 0; i < 6; i++) { const q = clamp(p - i * .08, 0, 1), x = f.x1 + (f.x0 - f.x1) * q, y = f.y1 + (f.y0 - f.y1) * q - Math.sin(q * Math.PI) * 16; px(x + ox - 1, y + oy - 1, 3, 3, i % 2 ? '#e0b0ff' : '#a050e0'); } }
       else { const x = f.x0 + (f.x1 - f.x0) * p, y = f.y0 + (f.y1 - f.y0) * p - Math.sin(p * Math.PI) * 18, cols = f.k === 'fire' ? FIRE : ['#5ab0e0', '#8ae0ff', '#ffffff'];
         for (let i = 4; i >= 0; i--) { const tq = clamp(p - i * .05, 0, 1), tx = f.x0 + (f.x1 - f.x0) * tq, ty = f.y0 + (f.y1 - f.y0) * tq - Math.sin(tq * Math.PI) * 18; px(tx + ox - 1, ty + oy - 1, 3 - Math.floor(i / 2), 3 - Math.floor(i / 2), cols[Math.min(2, Math.floor(i / 2))]); }
@@ -3202,7 +3314,7 @@
     if (TEST) return;
     let sk = ''; for (let i = 0; i < 5; i++) sk += img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
     const mh = maxHP(), mm = maxMP(), xn = xpNeed(P.lvl);
-    let st = '<div class="hdr"><div class="skulls" title="Deaths. Five skulls ends the run">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it. Finding gems unlocks: animal bonds at ' + unlockAt('merge') + ', shrine warping at ' + unlockAt('warp') + ', hired help at ' + unlockAt('hire') + ', blacksmiths at ' + unlockAt('smith') + '.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
+    let st = '<div class="hdr"><div class="skulls" title="Deaths. Five skulls ends the run">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it. Finding gems unlocks: animal bonds at ' + unlockAt('merge') + ', shrine warping at ' + unlockAt('warp') + ', hired help at ' + unlockAt('hire') + ', blacksmiths at ' + unlockAt('smith') + ', crafting from your stash anywhere at ' + unlockAt('stashcraft') + '.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
       '<div class="bar big hp"><i style="width:' + pct(P.hp, mh) + '"></i><span>HP ' + P.hp + ' / ' + mh + '</span></div>' +
       '<div class="bar big mp"><i style="width:' + pct(P.mp, mm) + '"></i><span>MP ' + P.mp + ' / ' + mm + '</span></div>' +
       '<div class="minline">Lv ' + P.lvl + ' &middot; ' + S.revealed + ' tiles &middot; ' + P.gold + ' gold</div>' +
@@ -3225,7 +3337,8 @@
     $('bookSub').textContent = known.length + ' / ' + spellSlots() + ' slots' + (P.spts ? ' \u00b7 ' + P.spts + ' pts' : '');
     $('spells').innerHTML = known.length ? known.map((k, i) => '<button class="spell' + (P.mp < SPELLS[k].cost ? ' off' : '') + (aim === k ? ' on' : '') + '" data-k="' + k + '" title="' + SPELLS[k].name + ' Lv ' + P.spells[k] + ' (' + SPELLS[k].cost + ' MP, key ' + (i + 1) + '): ' + SPHELP[k] + '"><u>' + (i + 1) + '</u>' + img(ICONURL['sp_' + k]) + '<i>' + SPELLS[k].cost + '</i></button>').join('') : '<div class="nosp">No spells yet.<br>Find rune stones</div>';
     let b = '', used = 0;
-    P.bag.forEach((e, i) => { used += esize(e); b += slotHTML(e, 'data-i="' + i + '"').replace('class="slot', 'class="slot' + (bagSel === i ? ' sel' : '')); });
+    const quiver = () => { const q = ['arrow', 'farrow', 'iarrow', 'parrow'].filter(k => ammo(k)).map(k => ammo(k) + (k === 'arrow' ? '' : k[0] === 'f' ? 'F' : k[0] === 'i' ? 'I' : 'P')).join(' '); return '<span style="position:absolute;top:1px;right:3px;font-size:10px;color:#ffe14a;font-weight:700">' + (q || '0') + '</span>'; };
+    P.bag.forEach((e, i) => { used += esize(e); b += slotHTML(e, 'data-i="' + i + '"', e === 'bow' ? quiver() : e === 'ttorch' ? '<span style="position:absolute;top:1px;right:3px;font-size:10px;color:#ff9a3a;font-weight:700">' + P.tt + '</span>' : '').replace('class="slot', 'class="slot' + (bagSel === i ? ' sel' : '')); });
     for (let i = used; i < P.bagCap; i++) b += '<div class="slot empty"></div>';
     if (renderHud.bagH !== b) { renderHud.bagH = b; $('bag').innerHTML = b; }
     if (bagSel !== null && (P.bag[bagSel] === undefined || B)) bagSel = null;
@@ -3274,7 +3387,7 @@
     for (const [s, label] of SLOTS) { const g = P.eq[s]; h += g ? slotHTML(g, 'data-un="' + s + '"').replace(' w2', '') : '<div class="slot empty" title="' + label + '"><span class="n" style="opacity:.4">' + label + '</span></div>'; }
     h += '</div><div class="sec"><span>BAG</span><span>' + bagUsed() + ' / ' + P.bagCap + '</span></div><div class="rowf">';
     let used = 0; P.bag.forEach((e, i) => { used += esize(e); h += slotHTML(e, 'data-b="' + i + '"'); }); for (let i = used; i < P.bagCap; i++) h += '<div class="slot empty"></div>';
-    h += '</div><div class="sec"><span>STASH (identical items stack, 10 per slot)</span><span>' + stashUsed() + ' / ' + S.stashCap + '</span></div><div class="grid">';
+    h += '</div><div class="sec"><span>STASH (identical items stack, 5 per slot)</span><span>' + stashUsed() + ' / ' + S.stashCap + '</span></div><div class="grid">';
     used = 0; const cnt = {}, order = [];
     S.stash.forEach((e, i) => { if (typeof e === 'string') { if (!cnt[e]) { cnt[e] = 0; order.push(e); } cnt[e]++; } else { used += 2; h += slotHTML(e, 'data-s="' + i + '"', '<span class="eq" data-se="' + i + '">EQUIP</span>'); } });
     for (const id of order) { let left = cnt[id]; while (left > 0) { const n = Math.min(STACK, left); left -= n; used += isize(id);
@@ -3286,14 +3399,14 @@
         '<button class="act" data-sq="-1" style="padding:2px 10px">&minus;</button><b style="min-width:28px;text-align:center">' + stQty + '</b><button class="act" data-sq="1" style="padding:2px 10px">+</button>' +
         '<button class="act" data-sg="qty">Take ' + stQty + '</button><button class="act" data-sg="half">Half</button><button class="act" data-sg="all">All</button></div>'; }
     else if (stSel) stSel = null;
-    h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="act" id="stAll">Store all items</button><button class="act alt" id="stCraft">Craft</button>' + (S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +10<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
+    h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="act" id="stAll">Store all items</button><button class="act alt" id="stCraft">Craft</button>' + (S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +5<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
     h += '<div class="note">Gear and big tools (pickaxe, ladder, raft) take 2 slots. Grow your bag with pack upgrades (3 hides + rope), merchants, and bosses. At a shrine, crafting can use materials from your stash.</div>';
     $('stashBox').innerHTML = h;
   }
   if (!TEST) $('stashBox').onclick = (e) => {
     const t = e.target;
     if (t.id === 'stClose') return closeStash();
-    if (t.closest('#stExp')) { const c = stashCost(); if (P.gold < c) { toast('You need ' + c + ' gold'); return; } P.gold -= c; S.stashCap += 10; toast('Your stash grows to ' + S.stashCap + ' slots'); hudDirty = true; return renderStash(); }
+    if (t.closest('#stExp')) { const c = stashCost(); if (P.gold < c) { toast('You need ' + c + ' gold'); return; } P.gold -= c; S.stashCap += 5; toast('Your stash grows to ' + S.stashCap + ' slots'); hudDirty = true; return renderStash(); }
     if (t.id === 'stCraft') { closeStash(); return openCraft(); }
     if (t.id === 'stAll') { for (let i = P.bag.length - 1; i >= 0; i--) if (typeof P.bag[i] === 'string' && canStash(P.bag[i])) S.stash.push(P.bag.splice(i, 1)[0]); hudDirty = true; return renderStash(); }
     const se = t.closest('[data-se]'); if (se) return stashEquip(+se.dataset.se);
@@ -4168,6 +4281,8 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
         '<button class="act hot" id="mnClose2" style="min-width:260px">Resume<small>or press Esc</small></button>' +
         '<button class="act" data-mt="music" style="min-width:260px">Music<small>volume, save and export tracks</small></button>' +
         '<button class="act" data-mt="guide" style="min-width:260px">How to play</button>' +
+        '<button class="act' + (floatOn ? ' hot' : '') + '" id="setFloat" style="min-width:260px">Floating tiles: ' + (floatOn ? 'ON' : 'OFF') + '<small>hexes gently bob up and down</small></button>' +
+        '<button class="act' + (hallMine ? ' hot' : '') + '" id="setHallMine" style="min-width:260px">Hall of Greats: ' + (hallMine ? 'all my runs' : 'best run per player') + '<small>how your own runs appear on the board</small></button>' +
         '<button class="act' + (autoEq ? ' hot' : '') + '" id="setAutoEq" style="min-width:260px">Auto-equip better gear: ' + (autoEq ? 'ON' : 'OFF') + '<small>picks up and wears gear that beats what you have</small></button>' +
         (endArm ? '<div class="note" style="max-width:420px;text-align:center;color:#ffb8a8;margin:6px 0 0"><b>End this run now?</b> It will <b>not count towards the Hall of Greats</b>, and its autosave is deleted. This cannot be undone.</div>' +
           '<div style="display:flex;gap:8px"><button class="act off" id="endYes">End the run</button><button class="act" id="endNo">Keep playing</button></div>'
@@ -4196,6 +4311,8 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     const t = e.target;
     if (t.closest('#mnClose') || t.closest('#mnClose2')) return closeMenu();
     if (t.closest('#endRun')) { endArm = true; return renderMenu(); }
+    if (t.closest('#setFloat')) { floatOn = !floatOn; try { localStorage.setItem('hexfloat', floatOn ? '1' : '0'); } catch (e) {} return renderMenu(); }
+    if (t.closest('#setHallMine')) { setHallMine(!hallMine); return renderMenu(); }
     if (t.closest('#setAutoEq')) { autoEq = !autoEq; try { localStorage.setItem('hexautoeq', autoEq ? '1' : '0'); } catch (e) {} return renderMenu(); }
     if (t.closest('#endNo')) { endArm = false; return renderMenu(); }
     if (t.closest('#endYes')) { closeMenu(); return gameOver('abandoned'); }
@@ -4252,7 +4369,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
       let ico, name, desc, off = lack;
       if (s.special === 'tome') { ico = em('&#128214;'); name = 'Tome of Insight'; desc = '+1 skill point'; }
       else if (s.special === 'scroll') { ico = em('&#128220;'); name = 'Spell Scroll'; desc = 'learn a new spell, or strengthen one you know'; }
-      else if (s.special === 'respec') { ico = em('&#9851;'); name = 'Draught of Rebirth <span style="color:#ffd23a">RARE</span>'; desc = 'Refunds every skill point in your tree so you can spend them again (awakened bonuses stay)'; off = off || respecBlock(); }
+      else if (s.special === 'respec') { ico = em('&#9851;'); name = 'Draught of Rebirth <span style="color:#ffd23a">RARE</span>'; desc = 'Goes in your bag; drink it whenever you like to refund every skill point in your tree (awakened bonuses stay)'; off = off || (bagUsed() + 1 > P.bagCap && 'Bag full'); }
       else if (s.it.kind === 'gear') { const g = s.it, cur = g.slot === 'ring' ? (gpower(P.eq.ring1) <= gpower(P.eq.ring2) ? P.eq.ring1 : P.eq.ring2) : P.eq[g.slot];
         ico = im(gearIconURL(g)); name = '<span data-sg="' + i + '" style="cursor:pointer;text-decoration:underline dotted;color:' + g.col + '">' + g.name + '</span>' + (gpower(g) > gpower(cur) ? ' <span style="color:#7dff8f">&#9650; upgrade</span>' : ''); desc = gearDesc(g) + (cur ? ' (wearing: ' + gearDesc(cur) + ')' : '') + ' &middot; click the name to compare'; }
       else { ico = im(ICONURL[s.it.id]); name = ITEMS[s.it.id].name; desc = ITEMS[s.it.id].d; off = off || (bagUsed() + isize(s.it.id) > P.bagCap && 'Bag full'); }
@@ -4285,11 +4402,10 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
       hudDirty = true; return renderShop(); }
     const by = tg.closest('[data-by]'); if (!by || by.classList.contains('off')) return;
     const i = +by.dataset.by, s = t.stock[i]; if (!s || P.gold < s.price) return;
-    if (s.special === 'respec' && shopArm !== i) { shopArm = i; return renderShop(); }
     shopArm = null; P.gold -= s.price; t.stock.splice(i, 1);
     if (s.special === 'tome') { P.sp++; toast('You study the tome: +1 skill point (press K)'); }
     else if (s.special === 'scroll') learnSpell();
-    else if (s.special === 'respec') { respecSkills(); toast('Your skills dissolve and all your points return (press K)'); }
+    else if (s.special === 'respec') { giveItem('rebirth'); toast('Bought a Draught of Rebirth. Drink it from your bag when you are ready'); }
     else if (s.it.kind === 'item') { giveItem(s.it.id); toast('Bought ' + ITEMS[s.it.id].name); }
     else { const g = s.it; if (bagUsed() + 2 <= P.bagCap) { P.bag.push(g); toast('Bought ' + g.name + ' (in your bag)'); } else { t.loot.push(g); equipFrom(t, t.loot.length - 1); toast('Bought and equipped ' + g.name); } }
     hudDirty = true; renderShop();
@@ -4413,25 +4529,28 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   }
   // blacksmith: mild, paid upgrades (up to +3 per item)
   let smithOpen = false;
-  const SMITH_MAX = 3;
+  // every 100 tiles you reach is a milestone: gear can be reforged, sharpened and plated one step further
+  const upCap = () => 3 + Math.min(5, Math.floor(((S && S.revealed) || 0) / 100));
+  const SMITH_MAX_OLD = 3;
   const smithStat = (g) => g.slot === 'weapon' ? ['atk', 1] : g.slot === 'ring' ? (g.atk ? ['atk', 1] : g.def ? ['def', 1] : g.hp ? ['hp', 2] : g.mp ? ['mp', 2] : ['crit', 1]) : ['def', 1];
-  const smithCost = (g) => Math.round((18 + gpower(g) * 3) * (1 + (g.up || 0) * .7));
+  // the smith charges what you can bear: a share of the gold you carry (bigger for each reforge), never less than the base price
+  const smithCost = (g) => { const up = g.up || 0, base = Math.round((18 + gpower(g) * 3) * (1 + up * .7)); return Math.max(base, Math.round(P.gold * Math.min(.7, .25 + .1 * up))); };
   function smithItems() { const out = []; for (const [sl, lab] of SLOTS) if (P.eq[sl]) out.push({ g: P.eq[sl], where: 'Worn: ' + lab, ref: 'eq:' + sl }); P.bag.forEach((e, i) => { if (typeof e !== 'string') out.push({ g: e, where: 'In your bag', ref: 'bag:' + i }); }); return out; }
   function openSmith() { if (TEST || B || S.state !== 'play') return; smithOpen = true; springOpen = true; $('smith').style.display = 'flex'; renderSmith(); }
   function closeSmith() { smithOpen = false; springOpen = false; $('smith').style.display = 'none'; hudDirty = true; }
   function renderSmith() {
     if (TEST || !smithOpen) return;
-    let h = '<h2 style="color:#ff9a3a;letter-spacing:3px">BLACKSMITH</h2><div class="note" style="margin:0 0 8px">Gold <b style="color:#ffd23a">' + P.gold + '</b> · Each piece can be reforged up to +' + SMITH_MAX + ', a little stronger each time.</div>';
+    let h = '<h2 style="color:#ff9a3a;letter-spacing:3px">BLACKSMITH</h2><div class="note" style="margin:0 0 8px">Gold <b style="color:#ffd23a">' + P.gold + '</b> · Each piece can be reforged up to +' + upCap() + ', a little stronger each time.</div>';
     const items = smithItems();
-    items.forEach((it) => { const g = it.g, up = g.up || 0, [st, amt] = smithStat(g), c = smithCost(g), off = up >= SMITH_MAX ? 'Fully reforged' : P.gold < c && 'Need ' + c + ' gold';
-      h += '<div class="rec"><img src="' + gearIconURL(g) + '" style="width:36px;height:36px;image-rendering:pixelated"><span class="grow"><b style="color:' + g.col + '">' + g.name + '</b> <span style="opacity:.7">· ' + it.where + '</span><br>' + gearDesc(g) + '</span><button class="act buy' + (off ? ' off' : '') + '" data-su="' + it.ref + '">' + (up >= SMITH_MAX ? 'Maxed' : '+' + amt + ' ' + st.toUpperCase()) + '<small>' + (off || c + ' gold') + '</small></button></div>'; });
+    items.forEach((it) => { const g = it.g, up = g.up || 0, [st, amt] = smithStat(g), c = smithCost(g), off = up >= upCap() ? 'Fully reforged' : P.gold < c && 'Need ' + c + ' gold';
+      h += '<div class="rec"><img src="' + gearIconURL(g) + '" style="width:36px;height:36px;image-rendering:pixelated"><span class="grow"><b style="color:' + g.col + '">' + g.name + '</b> <span style="opacity:.7">· ' + it.where + '</span><br>' + gearDesc(g) + '</span><button class="act buy' + (off ? ' off' : '') + '" data-su="' + it.ref + '">' + (up >= upCap() ? 'Maxed' : '+' + amt + ' ' + st.toUpperCase()) + '<small>' + (off || c + ' gold') + '</small></button></div>'; });
     if (!items.length) h += '<div class="note">You have no gear to reforge.</div>';
     h += '<div style="text-align:center;margin-top:8px"><button class="act" id="smClose">Leave</button></div>';
     $('smithBox').innerHTML = h;
   }
   function smithUp(ref) {
     const it = smithItems().find(x => x.ref === ref); if (!it) return false; const g = it.g, up = g.up || 0, c = smithCost(g), [st, amt] = smithStat(g);
-    if (up >= SMITH_MAX || P.gold < c) return false;
+    if (up >= upCap() || P.gold < c) return false;
     P.gold -= c; g[st] = (g[st] || 0) + amt; g.up = up + 1; g.name = g.name.replace(/ \+\d+$/, '') + ' +' + g.up; clampVitals(); hudDirty = true; return true;
   }
   if (!TEST) $('smithBox').onclick = (e) => { if (e.target.closest('#smClose')) return closeSmith(); const b = e.target.closest('[data-su]'); if (b && !b.classList.contains('off')) { if (smithUp(b.dataset.su)) { toast('Reforged! The gear feels sturdier'); renderSmith(); } } };
@@ -4489,7 +4608,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   function closeCraft() { craftOpen = false; $('craft').style.display = 'none'; hudDirty = true; }
   function renderCraft() {
     if (TEST || !craftOpen) return;
-    const atS = atShrine();
+    const atS = stashReach();
     let h = '<h2>CRAFTING</h2><div class="note" style="margin:0 0 6px">Combine items from your bag' + (atS ? ' and your stash' : '') + '. New recipes appear as you find ingredients or puzzles.</div>';
     h += '<div class="ctabs" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:6px">' + CRAFTTABS.map(([k, lab]) => {
       const n = RECIPES.filter(x => k === 'all' || recipeTabs(x).has(k)).length;
@@ -4500,7 +4619,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
       if (!recipeKnown(r)) { const ing = Object.keys(r.needs).map(k => P.seen[k] ? '<span class="ing miss">' + img(ICONURL[k]) + r.needs[k] + '</span>' : '<span class="ing miss" style="font-size:18px;width:28px;justify-content:center">?</span>').join('+');
         h += '<div class="rec">' + ing + '<span style="font-size:16px">&rarr;</span>' + img(ICONURL[r.id]) + '<span class="grow"><b>' + ITEMS[r.id].name + '</b><br><i>Find the missing ingredient to learn this</i></span></div>'; continue; }
       const why = craftCheck(r);
-      const ing = Object.keys(r.needs).map(k => { const have = countOf(k, atS); return '<span class="ing' + (have < r.needs[k] ? ' miss' : '') + '">' + img(ICONURL[k]) + r.needs[k] + '</span>'; }).join('+');
+      const ing = Object.keys(r.needs).map(k => { const have = AMMO[k] ? ammo(k) : countOf(k, atS); return '<span class="ing' + (have < r.needs[k] ? ' miss' : '') + '">' + img(ICONURL[k]) + r.needs[k] + '</span>'; }).join('+');
       h += '<div class="rec">' + ing + '<span style="font-size:16px">&rarr;</span>' + img(ICONURL[r.id]) + '<span class="grow"><b>' + (recipeLock(r) ? '&#128274; ' : '') + ITEMS[r.id].name + '</b>' + (isize(r.id) > 1 ? ' (2 slots)' : '') + '<br>' + ITEMS[r.id].d + '</span>' +
         '<button class="act' + (why ? ' off' : '') + '" data-c="' + r.id + '">Craft<small>' + (why || 'ready') + '</small></button></div>';
     }
@@ -4574,7 +4693,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     else if (isCand(c.q, c.r)) {
       if (!guy.mv && hd(c.q - guy.q, c.r - guy.r) === 1) { guy.target = null; reveal(c.q, c.r); }
       else { const a = approach(c); if (a) { guy.target = a; guy.pending = c; } }
-    }
+    } else { const sb = sealedBy(c.q, c.r); if (sb) toast(sealMsg(sb)); }
   }
   function tapAt(touch) {
     if (warpMode) { const c = cellAtMouse(), e = c && warpMode.list.find(x => x.t.q === c.q && x.t.r === c.r); if (e) warpTo(e.t); return; }
@@ -4675,7 +4794,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, markHud: () => { hudDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
