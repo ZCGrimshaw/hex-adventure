@@ -1,4 +1,4 @@
 {
-  "build": 54,
-  "notes": "Bow and arrows (fire, ice, poison), a new hero look, gentler sealed paths that tell you why, torches from fires, milestone upgrades and more."
+  "build": 55,
+  "notes": "Fix: missing hero, companion or tiles after the browser clears graphics memory. Lighter memory use for battle pictures."
 }

@@ -670,7 +670,7 @@
     rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 54;
+  const BUILD = 55;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2016,7 +2016,10 @@
   // =====================================================
   //  DRAWING PRIMITIVES (all draw into G)
   // =====================================================
-  const mkC = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+  const mkC = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; c.addEventListener('contextlost', artLost); return c; };
+  // when the browser wipes canvases (memory pressure, sleep, switching graphics cards) every cached picture is redrawn
+  let drawErrN = 0; function drawErr(er) { if (drawErrN++ < 5) console.error('draw error', er); window.__drawErr = String(er && er.stack || er).slice(0, 400); }
+  let lostT = 0; function artLost(e) { if (e && e.target) e.target.lost = true; if (Date.now() - lostT < 500) return; lostT = Date.now(); later(() => { TEX.clear(); TQ.length = 0; TQS.clear(); for (const k in SC) delete SC[k]; if (WARM) { WARM.job = null; WARM.q.length = 0; } hudDirty = true; }, 0); }
   const px = (x, y, w, h, c) => { G.fillStyle = c; G.fillRect(Math.round(x), Math.round(y), w, h); };
   function scan(pts, fn) {
     let minY = Infinity, maxY = -Infinity;
@@ -2609,8 +2612,8 @@
   // ---- texture cache: built a few per frame, old art shows until ready ----
   const TEX = new Map(), TQ = [], TQS = new Set();
   let texM = 3, dpr = 1;
-  function texGet(k, build) { const e = TEX.get(k); if (e && e.m === texM) return e.c; if (!TQS.has(k)) { TQS.add(k); TQ.push([k, build]); } return e ? e.c : null; }
-  function texNow(k, build, m) { m = m || texM; const e = TEX.get(k); if (e && e.m === m) return e.c; const c = build(m); TEX.set(k, { c, m }); return c; }
+  function texGet(k, build) { let e = TEX.get(k); if (e && e.c && e.c.lost) { TEX.delete(k); e = null; } if (e && e.m === texM) return e.c; if (!TQS.has(k)) { TQS.add(k); TQ.push([k, build]); } return e ? e.c : null; }
+  function texNow(k, build, m) { m = m || texM; const e = TEX.get(k); if (e && e.m === m && !(e.c && e.c.lost)) return e.c; const c = build(m); TEX.set(k, { c, m }); return c; }
   function texPump(ms) { const t0 = performance.now(); while (TQ.length && performance.now() - t0 < ms) { const [k, build] = TQ.shift(); TQS.delete(k); const e = TEX.get(k); if (e && e.m === texM) continue;
     try { TEX.set(k, { c: build(texM), m: texM }); } catch (er) { console.error(er); } } }
   function drawHi(c, x, y, w, h) { G.imageSmoothingEnabled = true; G.drawImage(c, x, y, w, h); G.imageSmoothingEnabled = false; }
@@ -2879,11 +2882,12 @@
   }
   const MONH = { blob: 13, beast: 18, bat: 18, human: 23, ghost: 24, dragon: 30, bear: 21, mimic: 15 };
   const BIGM = { Troll: 1.2, Golem: 1.2, Orc: 1.1, Rat: .8, Bat: .9 };
-  function* monBuildG(base, sc, mm) { const s = monSpec(base); s.f = (MONH[base.s] || 20) * (BIGM[base.n] || 1) / s.nh * sc; const c = yield* lpRenderG(s, mm); yield; c.float = s.float; c.w8 = silC(c, '#ffffff'); yield; c.ice = silC(c, '#9fe8ff'); return c; }
+  function* monBuildG(base, sc, mm) { const s = monSpec(base); s.f = (MONH[base.s] || 20) * (BIGM[base.n] || 1) / s.nh * sc; const c = yield* lpRenderG(s, mm); c.float = s.float; return c; }
+  const silOf = (c, k) => c[k] || (c[k] = silC(c, k === 'w8' ? '#ffffff' : '#9fe8ff'));
   const monBuild = (base, sc) => (mm) => { const g = monBuildG(base, sc, mm); let r; do r = g.next(); while (!r.done); return r.value; };
   function monLP(m, sc, battle) {
     const base = m.base;
-    if (battle) { const k = 'MB|' + base.n + '|' + sc; if (WARM.job && WARM.job.k === k && WARM.job.m === bM) WARM.job = null; return texNow(k, monBuild(base, sc), bM); }
+    if (battle) { const k = 'MB|' + base.n + '|' + sc; if (WARM.job && WARM.job.k === k && WARM.job.m === bM) WARM.job = null; const had = TEX.has(k), c = texNow(k, monBuild(base, sc), bM); if (!had) trimBattleTex(k); return c; }
     const k = 'M|' + base.n + '|' + (m.roam ? 1 : 0) + '|' + sc;
     return TEST ? null : texGet(k, monBuild(base, sc));
   }
@@ -2900,14 +2904,18 @@
     if (S.boss && S.boss.m) warmBattle(S.boss.m.base, true);
     { const k = heroKey(0, 1.15), e = TEX.get(k); if (!(e && e.m === bM) && !(WARM.job && WARM.job.k === k) && !WARM.q.some(x => x.k === k)) { const eq = { ...P.eq }; WARM.q.unshift({ k, mk: (mm) => { const s = heroSpec(eq, 0); s.f = 1.15; return lpRenderG(s, mm); } }); } }   // your own battle sprite, rebuilt when your gear changes
     const nb = BOSSES[S.bossN % BOSSES.length]; if (nb && S.revealed > (S.nextBoss || 0) - 25) warmBattle({ n: nb.n, s: nb.s, c: nb.c }, true);
-    for (let i = MON.length - 1; i >= 0; i--) { const b = MON[i]; if (b.d !== undefined && b.d <= S.revealed + 30) warmBattle(b, false); }   // the toughest types you can meet go first
+    let n2 = 0; for (let i = MON.length - 1; i >= 0 && n2 < 2; i--) { const b = MON[i]; if (b.d !== undefined && b.d <= S.revealed + 30) { warmBattle(b, false); n2++; } }   // just the two toughest types you can meet
+  }
+  function trimBattleTex(keep) {
+    const ks = [...TEX.keys()].filter(k => k.startsWith('MB|'));
+    for (let i = 0; i < ks.length - 6; i++) if (ks[i] !== keep && !(B && B.m && ks[i].startsWith('MB|' + B.m.base.n + '|'))) TEX.delete(ks[i]);
   }
   function warmPump(ms) {
     const t0 = performance.now();
     while (performance.now() - t0 < ms) {
       if (!WARM.job) { const n = WARM.q.shift(); if (!n) return; const e = TEX.get(n.k); if (e && e.m === bM) continue; WARM.job = { k: n.k, m: bM, g: n.mk(bM) }; }
       const j = WARM.job; let r; const ts = performance.now(); try { r = j.g.next(); } catch (er) { console.error(er); WARM.job = null; continue; } const dt2 = performance.now() - ts; if (dt2 > WARM.worst) WARM.worst = dt2;
-      if (r.done) { if (WARM.job === j) TEX.set(j.k, { c: r.value, m: j.m }); WARM.job = null; }
+      if (r.done) { if (WARM.job === j) { TEX.set(j.k, { c: r.value, m: j.m }); trimBattleTex(j.k); } WARM.job = null; }
     }
   }
   function bearLP(sc, battle, kind) { kind = kind || 'bear'; const A = ANIMALS[kind], k = 'BEAR|' + kind + '|' + sc + (battle ? '|B' : ''), build = (mm) => { const s = monSpec({ n: kind[0].toUpperCase() + kind.slice(1), s: A.s, c: A.c }); s.f = 21 / s.nh * sc * A.sc; return lpRender(s, mm); };
@@ -2958,7 +2966,7 @@
     if (m.boss) { px(cx - 6, top, 13, 3, '#ffe14a'); for (let i = 0; i < 4; i++) px(cx - 6 + i * 4, top - 3, 1, 3, '#ffe14a'); px(cx, top + 1, 1, 1, '#ff4a4a'); }
     if (m.elite) { px(cx - 4, top, 9, 2, '#ffe14a'); px(cx - 4, top - 2, 1, 2, '#ffe14a'); px(cx, top - 2, 1, 2, '#ffe14a'); px(cx + 4, top - 2, 1, 2, '#ffe14a'); px(cx, top - 1, 1, 1, '#ff4a4a'); }
     if (m.heldXp) { const cc = Math.sin(gt * 6) > 0 ? '#ffe14a' : '#ffffff'; glow(cx, top - 7, 10, '#ffe14a', .5); px(cx - 2, top - 9, 5, 5, cc); px(cx - 1, top - 10, 3, 7, cc); }
-    if (m.iced && m.iced > gt && L) lpFeet(L.ice, cx, cy - hop, guy.x > m.x, 1, 1, .45);
+    if (m.iced && m.iced > gt && L) lpFeet(silOf(L, 'ice'), cx, cy - hop, guy.x > m.x, 1, 1, .45);
     else if (m.iced && m.iced > gt) { G.globalAlpha = .4; G.fillStyle = '#9fe8ff'; G.fillRect(Math.round(cx - c.width * ms / 2), Math.round(cy - c.height * ms - hop), c.width * ms, c.height * ms); G.globalAlpha = 1; }
     if (m.hp < m.maxHp) { px(cx - 8, cy + 4, 16, 3, '#000'); px(cx - 7, cy + 5, Math.max(1, Math.round(14 * m.hp / m.maxHp)), 1, '#ff4a4a'); }
     text(String(m.L), cx + Math.ceil(c.width * ms / 2) + 2, cy - c.height * ms + 2 - hop, m.elite || m.boss ? '#ffe14a' : '#d0d0d0');
@@ -3104,7 +3112,7 @@
     if (S.state === 'play' && !guy.mv && !caveFull() && !warpMode) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); else if (sealedBy(q, r)) list.push({ cand: 1, sealed: 1, q, r, y: toWorld(q, r).y - .1 }); }
     if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
     list.sort((a, b) => a.y - b.y);
-    for (const it of list) {
+    for (const it of list) { try {   // one bad drawing never stops the rest of the world from drawing
       if (it.guy) drawGuy(ox, oy);
       else if (it.pet) drawPet(ox, oy);
       else if (it.hired) drawHired(ox, oy);
@@ -3122,7 +3130,7 @@
         G.globalAlpha = 1;
         if (hoverT === t) outlineHex(cx, cy - elev(t), monAt(t.q, t.r) ? '#ff5a4a' : blocked(t) ? '#ff9a3a' : '#ffe14a');
         if (S.cp === t && t !== ct) glow(cx, cy, 34, '#5ad0ff', .12); }
-    }
+    } catch (er) { drawErr(er); } }
     if (warpMode) {
       G.save(); G.textBaseline = 'alphabetic';
       const pul = Math.sin(gt * 6) > 0, hc = mouse.x > -900 ? cellAtMouse() : null, fs = 12 / scale;
@@ -3217,8 +3225,8 @@
     if (m.elite) bglow(mx, my - L.ph * .5, 34, '#ffd23a', .3);
     if (boss) bglow(mx, my - L.ph * .5, 50, '#ff3a2a', .22 + .08 * Math.sin(gt * 3));
     if (da > 0) { lpFeet(L, mx, my, false, 1, msy * (dying ? .6 + .4 * da : 1), da);
-      const hk = 1 - (gt - B.hitM) / .16; if (hk > 0 && !dying) lpFeet(L.w8, mx, my, false, 1, msy, hk * .85);
-      if (B.frozen) lpFeet(L.ice, mx, my, false, 1, msy, .45); }
+      const hk = 1 - (gt - B.hitM) / .16; if (hk > 0 && !dying) lpFeet(silOf(L, 'w8'), mx, my, false, 1, msy, hk * .85);
+      if (B.frozen) lpFeet(silOf(L, 'ice'), mx, my, false, 1, msy, .45); }
     if (dying && gt - (B.dieT || gt) < .7) { const p = (gt - B.dieT) / .7; for (let i = 0; i < 14; i++) { const a = i / 14 * 6.28; bdot(mx + Math.cos(a) * 30 * p, my - L.ph * .5 + Math.sin(a) * 20 * p, 1.2 * (1 - p), i % 2 ? '#ffe14a' : '#ffffff', 1 - p); } bglow(mx, my - L.ph * .5, 40, '#ffffff', .5 * (1 - p)); }
     const mtop = my - L.ph;
     if (boss && da > 0) { G.save(); G.translate(mx, mtop - 6); G.fillStyle = '#ffd23a'; G.strokeStyle = '#3a1a06'; G.lineWidth = .7; G.beginPath();
@@ -3226,7 +3234,7 @@
     if (B.charging) text('!', mx, mtop - 16, Math.floor(gt * 6) % 2 ? '#ff4a4a' : '#ffffff', 2);
     // hero side
     plat(hx0, hy0 + bobH, 1);
-    if (pet) { const pb = bearLP(1.1 * (1 + .22 * ((pet.lvl || 1) - 1)), true, petKind()); softShadow(20, hy0 + bobH + 5, 9, .5); lpFeet(pb, 20, hy0 + bobH + 5, true); }
+    if (pet) try { const pb = bearLP(1.1 * (1 + .22 * ((pet.lvl || 1) - 1)), true, petKind()); softShadow(20, hy0 + bobH + 5, 9, .5); lpFeet(pb, 20, hy0 + bobH + 5, true); } catch (er) { drawErr(er); }
     const hc = heroLP(0, 1.15), hx = hx0 + lunge('p') + shk(B.hitP), hy = hy0 + bobH + 2;
     softShadow(hx, hy, 9, .55);
     if (!(B.result === 'dead' && Math.floor(gt * 6) % 2)) { lpFeet(hc, hx, hy, false, 1, 1 + Math.sin(gt * 3) * .01);
@@ -4794,7 +4802,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
-    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
+    zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
 })();
