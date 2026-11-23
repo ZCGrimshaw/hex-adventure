@@ -659,7 +659,7 @@
   let hallMine = false; try { hallMine = localStorage.getItem('hexhallmine') === '1'; } catch (e) {}
   function setHallMine(v) { hallMine = v; try { localStorage.setItem('hexhallmine', v ? '1' : '0'); } catch (e) {} }
   function hallTable(j) {
-    const cls = !!(j && j.classic), tgl = '<div style="text-align:center;margin-top:6px"><button class="act" data-hallclassic="1">' + (cls ? 'Back to the current Hall' : 'Show the Classic Hall (5-skull runs)') + '</button></div>';
+    const cls = !!(j && j.classic), fade = !cls && j && j.players >= 20, tgl = fade ? '' : '<div style="text-align:center;margin-top:6px"><button class="act" data-hallclassic="1">' + (cls ? 'Back to the current Hall' : 'Show the Classic Hall (5-skull runs)') + '</button></div>';
     const ban = cls ? '<div class="note" style="color:#ffd23a">&#9733; Classic Hall: runs played with the old rules, five skulls from the start.</div>' : '';
     if (!j || !j.top || !j.top.length) return ban + '<div class="note">' + (cls ? 'No Classic runs here.' : 'No one has entered the Hall of Greats yet. Be the first!') + '</div>' + tgl;
     let h = ban + '<table class="hog"><tr><th></th><th>Name</th><th class="n">Tiles</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
@@ -676,7 +676,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 59;
+  const BUILD = 60;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -4846,7 +4846,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
-  window.__g3 = { skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
+  window.__g3 = { hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
