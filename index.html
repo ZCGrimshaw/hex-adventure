@@ -600,7 +600,7 @@
   }
   function startOnline() {
     if (TEST || !PID || !S || S.runId) return; const s = S;
-    rpc('hx_start', { p_player: PID, p_name: pname || 'Explorer' }).then(j => { if (j && j.run && s === S) { S.runId = j.run; saveSoon(); } }).catch(() => {});
+    rpc('hx_start2', { p_player: PID, p_name: pname || 'Explorer', p_rules: S.rules === 2 ? 2 : 1 }).catch(() => rpc('hx_start', { p_player: PID, p_name: pname || 'Explorer' })).then(j => { if (j && j.run && s === S) { S.runId = j.run; saveSoon(); } }).catch(() => {});
   }
   // autosave: the run lives in IndexedDB until the 5th skull, then it is deleted
   let DBH = null, saveT = 0, saveWant = false;
@@ -623,6 +623,7 @@
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
     d.S = Object.assign({ miles: 0, stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    if (d.S.rules === undefined) d.S.rules = 1;   // runs begun before the 3-skull rules keep their 5 skulls
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
     if (!d.S.mseed) d.S.mseed = (Math.random() * 4294967296) >>> 0;   // older saves get a soundtrack of their own
@@ -652,25 +653,30 @@
     return idbDo('readonly', st => st.get('run')).then(d => { if (d && d.S && d.S.state === 'play' && d.tiles instanceof Map) { restoreRun(d); return true; } return false; }).catch(() => false);
   }
   // the Hall shows each player's best run; a setting lets you see every one of your own runs among them
+  // skull rules: new runs (rules 2) start with 3 skulls and earn one more at 100 and 200 tiles; runs begun before that (rules 1) keep all 5
+  const skullCap = () => (S && S.rules === 2) ? 3 + Math.min(2, Math.floor((S.revealed || 0) / 100)) : 5;
+  let hallClassic = false;
   let hallMine = false; try { hallMine = localStorage.getItem('hexhallmine') === '1'; } catch (e) {}
   function setHallMine(v) { hallMine = v; try { localStorage.setItem('hexhallmine', v ? '1' : '0'); } catch (e) {} }
   function hallTable(j) {
-    if (!j || !j.top || !j.top.length) return '<div class="note">No one has entered the Hall of Greats yet. Be the first!</div>';
-    let h = '<table class="hog"><tr><th></th><th>Name</th><th class="n">Tiles</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
-    for (const e of j.top) h += '<tr class="' + (e.me ? 'me ' : '') + (e.rank <= 3 ? 'top' + e.rank : '') + '"><td class="rk">#' + e.rank + '</td><td>' + esc(e.name) + '</td><td class="n">' + e.tiles + '</td><td class="n">' + e.level + '</td><td class="n">' + e.gold + '</td><td class="n">' + e.gems + '</td></tr>';
+    const cls = !!(j && j.classic), tgl = '<div style="text-align:center;margin-top:6px"><button class="act" data-hallclassic="1">' + (cls ? 'Back to the current Hall' : 'Show the Classic Hall (5-skull runs)') + '</button></div>';
+    const ban = cls ? '<div class="note" style="color:#ffd23a">&#9733; Classic Hall: runs played with the old rules, five skulls from the start.</div>' : '';
+    if (!j || !j.top || !j.top.length) return ban + '<div class="note">' + (cls ? 'No Classic runs here.' : 'No one has entered the Hall of Greats yet. Be the first!') + '</div>' + tgl;
+    let h = ban + '<table class="hog"><tr><th></th><th>Name</th><th class="n">Tiles</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
+    for (const e of j.top) h += '<tr class="' + (e.me ? 'me ' : '') + (e.rank <= 3 ? 'top' + e.rank : '') + '"><td class="rk">#' + e.rank + '</td><td>' + esc(e.name) + (cls ? ' <span style="color:#ffd23a" title="Played with five skulls">&#9733;</span>' : '') + '</td><td class="n">' + e.tiles + '</td><td class="n">' + e.level + '</td><td class="n">' + e.gold + '</td><td class="n">' + e.gems + '</td></tr>';
     h += '</table>';
     const total = j.runs !== undefined ? j.runs : j.players, who = j.runs !== undefined ? ' run' + (total === 1 ? '' : 's') + ' by ' + j.players + ' explorer' + (j.players === 1 ? '' : 's') : ' explorer' + (total === 1 ? '' : 's');
     if (j.mine && !j.top.some(e => e.me)) h += '<div class="note">Your best: #' + j.mine.rank + ' of ' + total + ' (' + j.mine.tiles + ' tiles, level ' + j.mine.level + ')</div>';
     else h += '<div class="note">' + total + who + ' from players everywhere. Ranked by tiles, then level, then gold. ' + (hallMine ? 'Every one of your runs is shown; other players show their best.' : 'Each player\'s best run is shown.') + ' Your runs are highlighted.</div>';
-    h += '<div style="text-align:center;margin-top:6px"><button class="act" data-hallmine="1">' + (hallMine ? 'Show only my best run' : 'Show all my runs') + '</button></div>';
+    h += tgl + '<div style="text-align:center;margin-top:6px"><button class="act" data-hallmine="1">' + (hallMine ? 'Show only my best run' : 'Show all my runs') + '</button></div>';
     return h;
   }
   function loadBoard(el) {
     el.innerHTML = '<div class="note">Loading the Hall of Greats...</div>';
-    rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 }).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
+    rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 58;
+  const BUILD = 59;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -709,7 +715,7 @@
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
     P = { ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
-    S = { state: 'play', revealed: 0, miles: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, unl: {}, mseed: (Math.random() * 4294967296) >>> 0, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 25, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
+    S = { state: 'play', rules: 2, revealed: 0, miles: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, unl: {}, mseed: (Math.random() * 4294967296) >>> 0, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 25, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
     const t = { q: 0, r: 0, type: 'shrine', used: true, born: -10, phase: 0, loot: [] };
     tiles.set(key(0, 0), t); S.cp = t;
@@ -964,6 +970,7 @@
     const t = genTile(q, r);
     tiles.set(key(q, r), t); S.revealed++;
     if (S.revealed % 100 === 0 && S.revealed / 100 > (S.miles || 0)) { S.miles = S.revealed / 100; if (S.miles <= 5) showBanner('MILESTONE: ' + S.revealed + ' TILES', 'Gear can now be reforged, sharpened and plated up to +' + upCap()); }
+    if (S.rules === 2 && (S.revealed === 100 || S.revealed === 200)) { const n = skullCap(); later(() => toast('You earned an extra skull! You can now fall ' + n + ' times before the run ends'), 600); hudDirty = true; }
     if (S.revealed % 2 === 0) P.mp = Math.min(maxMP(), P.mp + 1 + sk('flow'));
     stats.far = Math.max(stats.far, hd(q, r));
     const w = toWorld(q, r); burst(w.x, w.y, 10, ['#ffffff', '#9af7a8', '#4cd964'], 40, -20);
@@ -1837,11 +1844,11 @@
     const half = Math.floor(P.xp / 2); P.xp -= half;
     if (inCave) { t.graveXp = (t.graveXp || 0) + half; t.grave = true; } else { m.heldXp += half; m.hp = Math.min(m.maxHp, m.hp + Math.round((m.maxHp - m.hp) * .5)); }
     if (pet) petHome();
-    if (S.deaths >= 5) return gameOver();
+    if (S.deaths >= skullCap()) return gameOver();
     guy.q = S.cp.q; guy.r = S.cp.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null;
     P.hp = maxHP(); P.mp = maxMP(); flash = 1; cam.x = w.x; cam.y = w.y - 6; later(saveNow, 50);
     if (!TEST && pname.length < 2) later(() => askName(() => {}), 1200);
-    toast((inCave ? 'The cave collapsed. Your gear and lost XP wait at its entrance. ' : 'You wake at the checkpoint. Your gear lies where you fell, your stash is safe. ') + '(' + (5 - S.deaths) + ' lives left)'); hudDirty = true;
+    toast((inCave ? 'The cave collapsed. Your gear and lost XP wait at its entrance. ' : 'You wake at the checkpoint. Your gear lies where you fell, your stash is safe. ') + '(' + (skullCap() - S.deaths) + ' lives left)'); hudDirty = true;
   }
   function saveRun() {
     let lb = []; try { lb = JSON.parse(localStorage.getItem('hexworld_g3_lb') || '[]'); } catch (e) {}
@@ -1880,12 +1887,13 @@
     if (TEST) return;
     const sk = '<img class="px" src="' + ICONURL.skull + '" style="width:30px;height:30px">';
     const details = (() => { let h = ''; for (let i = 0; i < rows.length; i += 2) { const b = rows[i + 1]; h += '<tr><td>' + rows[i][0] + '</td><td>' + rows[i][1] + '</td><td>' + (b ? b[0] : '') + '</td><td>' + (b ? b[1] : '') + '</td></tr>'; } return h; })();
-    $('overBox').innerHTML = '<h2 style="color:#ff6a4a">' + (status === 'ended' || ab ? 'RUN ENDED' : 'GAME OVER') + '</h2><div style="text-align:center">' + (status === 'ended' || ab ? '' : sk.repeat(5)) + '</div>' +
+    $('overBox').innerHTML = '<h2 style="color:#ff6a4a">' + (status === 'ended' || ab ? 'RUN ENDED' : 'GAME OVER') + '</h2><div style="text-align:center">' + (status === 'ended' || ab ? '' : sk.repeat(skullCap())) + '</div>' +
       '<div class="hogsum"><div class="big"><b>' + S.revealed + '</b>tiles discovered</div><div><b>' + P.lvl + '</b>level</div><div><b style="color:#ffd23a">' + P.gold + '</b>gold</div><div><b style="color:#f0b8ff">' + S.gems + '</b>space gems</div></div>' +
       (ab ? '<div class="note" style="text-align:center">You ended this run from the pause menu, so it is not in the Hall of Greats.</div>' : '<h2 style="color:#ffd23a;margin-top:4px">HALL OF GREATS</h2>' +
       '<div class="namerow" id="hgRow"><input id="hgName" maxlength="14" placeholder="Your name" value="' + esc(pname) + '"><button class="act buy" id="hgSubmit">Enter the Hall</button></div><div id="hgMsg" class="note"></div><div id="hgBoard"></div>') +
       '<details class="rd"><summary>Run details</summary><table>' + details + '</table></details>' +
       '<div style="text-align:center;margin-top:8px"><button class="act" id="again">Play again</button></div>';
+    hallClassic = S.rules !== 2;
     const runId = S.runId, snap = { tiles: S.revealed, level: P.lvl, gold: P.gold, gems: S.gems, bosses: stats.bosses };
     let sent = false;
     const submit = () => {
@@ -3357,9 +3365,9 @@
   function renderHud() {
     hudDirty = false;
     if (TEST) return;
-    let sk = ''; for (let i = 0; i < 5; i++) sk += img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
+    let sk = ''; const cap = skullCap(); for (let i = 0; i < 5; i++) sk += i >= cap ? '<span style="opacity:.22;display:inline-block" title="Unlocks at ' + ((i - 2) * 100) + ' tiles revealed">' + img(ICONURL.skullD) + '</span>' : img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
     const mh = maxHP(), mm = maxMP(), xn = xpNeed(P.lvl);
-    let st = '<div class="hdr"><div class="skulls" title="Deaths. Five skulls ends the run">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it. Finding gems unlocks: animal bonds at ' + unlockAt('merge') + ', shrine warping at ' + unlockAt('warp') + ', hired help at ' + unlockAt('hire') + ', blacksmiths at ' + unlockAt('smith') + ', crafting from your stash anywhere at ' + unlockAt('stashcraft') + '.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
+    let st = '<div class="hdr"><div class="skulls" title="Deaths. Using up every skull ends the run. New runs start with 3 and earn a 4th at 100 tiles and a 5th at 200">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it. Finding gems unlocks: animal bonds at ' + unlockAt('merge') + ', shrine warping at ' + unlockAt('warp') + ', hired help at ' + unlockAt('hire') + ', blacksmiths at ' + unlockAt('smith') + ', crafting from your stash anywhere at ' + unlockAt('stashcraft') + '.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
       '<div class="bar big hp"><i style="width:' + pct(P.hp, mh) + '"></i><span>HP ' + P.hp + ' / ' + mh + '</span></div>' +
       '<div class="bar big mp"><i style="width:' + pct(P.mp, mm) + '"></i><span>MP ' + P.mp + ' / ' + mm + '</span></div>' +
       '<div class="minline">Lv ' + P.lvl + ' &middot; ' + S.revealed + ' tiles &middot; ' + P.gold + ' gold</div>' +
@@ -4305,7 +4313,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   function closeMenu() { menuOpen = false; $('gmenu').style.display = 'none'; hudDirty = true; }
   function guideHTML() {
     const li = (a) => '<ul style="margin:4px 0 10px 18px;padding:0;line-height:1.5">' + a.map(x => '<li>' + x + '</li>').join('') + '</ul>', hd = (t) => '<h3 style="margin:10px 0 2px;color:#7dff8f;font-size:15px">' + t + '</h3>';
-    return hd('The goal') + li(['Explore a floating world, one hex at a time. Every tile you reveal is new, and the further you go the tougher it gets.', 'Your score is <b>space gems</b> (found in caves and dropped by guardians and bosses). The Hall of Greats ranks runs by tiles, then level, then gold.', 'You have <b>5 skulls</b>. Each death costs one and sends you back to your last shrine. The fifth ends the run.']) +
+    return hd('The goal') + li(['Explore a floating world, one hex at a time. Every tile you reveal is new, and the further you go the tougher it gets.', 'Your score is <b>space gems</b> (found in caves and dropped by guardians and bosses). The Hall of Greats ranks runs by tiles, then level, then gold.', 'You start with <b>3 skulls</b>, and earn a 4th at 100 tiles revealed and a 5th at 200. Each death costs one and sends you back to your last shrine. Losing the last one ends the run. Runs begun before this rule keep their 5 skulls, and show in the Classic Hall.']) +
       hd('Controls') + li(['<b>Click a glowing outline</b> to reveal a tile. <b>Click a tile</b> to walk there. On a phone, tap once to select, tap again to go.', 'Drag to look around. Pinch, mouse wheel or + / - to zoom. 0 resets.', '<b>Right-click</b> (or long-press) gear on the ground, or an Equip button, to compare it with what you wear. Use the arrows to flip through several items.', 'Keys: <b>C</b> crafting, <b>K</b> skills, <b>1-6</b> spells, <b>Esc</b> cancels or closes.']) +
       hd('Shrines') + li(['Shrines are checkpoints. Monsters cannot attack you on one. Rest to heal fully, open your stash (it is safe when you die), and swap your carried spells in the Spellbook.', 'They appear more often when you are hurt or your bag is full, and always after a long stretch.']) +
       hd('Growing stronger') + li(['You gain a skill point every level and 2 from each boss. Higher ranks of a skill cost more points. Master every skill for an <b>Awakening</b>: your bonuses lock in, the tree resets, and levels need 1.5x more XP.', 'The first rune stone you find is a spell book: pick Fireball, Frost or Heal. Every rune after that gives a spell point, which you spend at a shop to learn new spells or make known ones stronger. You carry only 3 spells (up to 6 with Arcane Focus).', 'Gear drops from chests, monsters and shops. Compare before you equip, and reinforce armor with iron.']) +
@@ -4838,7 +4846,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
-  window.__g3 = { chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
+  window.__g3 = { skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);

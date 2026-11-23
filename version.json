@@ -1,1 +1,1 @@
-{ "build": 58, "notes": "Treasure chests now age: they ripen with richer loot, then either turn into a Mimic (1 in 10) or rot away." }
+{ "build": 59, "notes": "New runs start with 3 skulls and earn a 4th at 100 tiles and a 5th at 200. Runs already in progress keep 5. Old Hall scores moved to a Classic Hall with a star." }
