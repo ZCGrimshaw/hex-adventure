@@ -676,7 +676,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 60;
+  const BUILD = 61;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -3365,7 +3365,7 @@
   function renderHud() {
     hudDirty = false;
     if (TEST) return;
-    let sk = ''; const cap = skullCap(); for (let i = 0; i < 5; i++) sk += i >= cap ? '<span style="opacity:.22;display:inline-block" title="Unlocks at ' + ((i - 2) * 100) + ' tiles revealed">' + img(ICONURL.skullD) + '</span>' : img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
+    let sk = ''; const cap = skullCap(); for (let i = 0; i < cap; i++) sk += img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
     const mh = maxHP(), mm = maxMP(), xn = xpNeed(P.lvl);
     let st = '<div class="hdr"><div class="skulls" title="Deaths. Using up every skull ends the run. New runs start with 3 and earn a 4th at 100 tiles and a 5th at 200">' + sk + '</div><div class="gems" title="Space gems you can spend: 1 gem pays for a full rest at a shrine. You have found ' + S.gems + ' this run, which sets your leaderboard score (best ever ' + bestGems + '); spending gems never lowers it. Finding gems unlocks: animal bonds at ' + unlockAt('merge') + ', shrine warping at ' + unlockAt('warp') + ', hired help at ' + unlockAt('hire') + ', blacksmiths at ' + unlockAt('smith') + ', crafting from your stash anywhere at ' + unlockAt('stashcraft') + '.">' + img(ICONURL.gem) + '<b>' + gemBal() + '</b></div></div>' +
       '<div class="bar big hp"><i style="width:' + pct(P.hp, mh) + '"></i><span>HP ' + P.hp + ' / ' + mh + '</span></div>' +
