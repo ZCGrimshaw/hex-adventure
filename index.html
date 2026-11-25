@@ -712,7 +712,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 64;
+  const BUILD = 65;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1794,6 +1794,18 @@
         const d = hitMon((pAtk() * (.85 + .3 * rnd()) - mdef(m) * .5) * (crit ? 1.8 : 1), crit ? '#ffe14a' : '#ffffff');
         blog((crit ? 'CRITICAL! ' : '') + 'You hit ' + m.name + ' for ' + d + '.');
       }
+    } else if (type === 'shoot') {
+      if (!P.bag.includes('bow') || !ammo(arg)) return; P.ammo[arg]--; stats.items++; B.lunge = { who: 'p', t: gt }; hudDirty = true;
+      if (m.trait === 'dodge' && rnd() < .22) { blog(m.name + ' dodges your arrow!'); fx('MISS', 'm', '#aaaaaa'); }
+      else {
+        const nm = { arrow: 'Arrow', farrow: 'Fire arrow', iarrow: 'Ice arrow', parrow: 'Poison arrow' }[arg];
+        const dm = (2 + pAtk() * .8) * (1 + .15 * sk('fletch')) * (.85 + .3 * rnd()) * (arg === 'farrow' ? 1.25 : arg === 'parrow' ? 1.1 : 1);
+        const d = hitMon(Math.max(1, dm - mdef(m) * .4), { arrow: '#f0e0c0', farrow: '#ff8a2a', iarrow: '#8ae0ff', parrow: '#9aff5a' }[arg]);
+        let extra = '';
+        if (arg === 'iarrow' && !m.boss && m.hp > 0) { const f = !m.elite || rnd() < .6; if (f) { B.frozen = 1; extra = ' and freezes it'; } else extra = ', but it resists the freeze'; }
+        if (arg === 'parrow' && m.hp > 0) { m.poison = 6; m.poisonD = Math.max(2, Math.round(d * .35)); extra = '. Poison sets in'; }
+        blog(nm + ' hits ' + m.name + ' for ' + d + extra + '.');
+      }
     } else if (type === 'defend') { B.defend = true; P.mp = Math.min(maxMP(), P.mp + 1); blog('You brace yourself. (+1 MP)'); }
     else if (type === 'magic') {
       const sp = SPELLS[arg], lv = P.spells[arg]; if (!sp || !lv || P.mp < sp.cost || (!TEST && activeSpells().indexOf(arg) < 0)) return;
@@ -2556,7 +2568,8 @@
         const on = S.cp === t, bob = Math.round(Math.sin(gt * 2.5) * 1.5), fy = cy - 31 + bob;
         const cc = on ? ['#3ab8ff', '#a0f0ff', '#ffffff'] : t.used ? ['#5a6a8a', '#7a8aa8', '#a0aac0'] : ['#ffaa3a', '#ffe08a', '#ffffff'];
         { const gc = shrineGemLP(on ? 'on' : t.used ? 'used' : 'off'); if (gc) lpFeet(gc, cx - 13, fy + 11); else for (let r = 0; r < 9; r++) { const w = r < 4 ? r : 8 - r; px(cx - 13 - w, fy + r, w * 2 + 1, 1, r < 3 ? cc[2] : r < 6 ? cc[1] : cc[0]); } }
-        glow(cx - 13, fy + 4, on ? 30 : 18, on ? '#5ad0ff' : '#ffaa3a', on ? .5 : .25); } break;
+        glow(cx - 13, fy + 4, on ? 30 : 18, on ? '#5ad0ff' : '#ffaa3a', on ? .5 : .25);
+        if (!t.used && !on) { const pu = .5 + .5 * Math.sin(gt * 2 + t.q); glow(cx - 6, cy - 6, 40, '#ffb04a', .26 + .12 * pu); glow(cx - 13, fy + 6, 30, '#ffd27a', .3 + .12 * pu); } } break;
       case 'spring': { const dry = !!t.dry;
         for (let y = -6; y <= 6; y++) { const hw = Math.floor(15 * Math.sqrt(1 - (y / 6.6) * (y / 6.6))), yy = cy + 1 + y;
           px(cx - hw - 1, yy, 2 * hw + 2, 1, y > 2 ? '#4a4a60' : '#9a9aae');
@@ -4806,11 +4819,12 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     if (B.turn === 'done') h = B.result === 'fled' ? '' : btn('Continue', '', 'close');
     else if (B.turn === 'enemy') h = '<div class="small">...</div>';
     else if (B.menu === 'magic') { for (const k of activeSpells()) h += btn(SPELLS[k].name, SPELLS[k].cost + ' MP · ' + SPELLS[k].desc, 'magic', k, P.mp < SPELLS[k].cost); h += btn('Back', '', 'menu', 'main'); }
+    else if (B.menu === 'bow') { for (const [k, nm, ds] of [['arrow', 'Arrow', ''], ['farrow', 'Fire arrow', 'extra damage'], ['iarrow', 'Ice arrow', 'freezes (not bosses)'], ['parrow', 'Poison arrow', 'poisons']]) if (ammo(k)) h += btn('<img class="px" src="' + ICONURL[k] + '" style="width:18px;height:18px;vertical-align:middle"> ' + nm, ammo(k) + ' left' + (ds ? ' · ' + ds : ''), 'shoot', k); h += btn('Back', '', 'menu', 'main'); }
     else if (B.menu === 'items') { P.bag.forEach((id, i) => { if (battleUsable(id)) h += btn('<img class="px" src="' + ICONURL[id] + '" style="width:18px;height:18px;vertical-align:middle"> ' + ITEMS[id].name, ITEMS[id].d, 'item', i); }); h += btn('Back', '', 'menu', 'main'); }
     else {
       const ch = clamp(50 + gsum('flee') + 10 * sk('flee') - (m.elite ? 15 : 0), 15, 95);
       h = btn('Attack', '', 'attack') + btn('Defend', P.eq.shield ? 'block 70%' : 'block 55%', 'defend') + btn('Magic', activeSpells().length ? '' : 'none equipped', 'menu', 'magic', !activeSpells().length) +
-        btn('Items', '', 'menu', 'items', !P.bag.some(battleUsable)) + (m.boss ? btn('Run', 'no escape!', 'run', '', true) : btn('Run', ch + '% chance', 'run'));
+        btn('Items', '', 'menu', 'items', !P.bag.some(battleUsable)) + (P.bag.includes('bow') ? btn('Shoot', ['arrow', 'farrow', 'iarrow', 'parrow'].reduce((s, k) => s + ammo(k), 0) + ' arrows', 'menu', 'bow', !['arrow', 'farrow', 'iarrow', 'parrow'].some(ammo)) : '') + (m.boss ? btn('Run', 'no escape!', 'run', '', true) : btn('Run', ch + '% chance', 'run'));
     }
     $('bBtns').innerHTML = h; hudDirty = true;
   }
@@ -4951,7 +4965,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && !window.matchMedia('(max-width:760px)').matches && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
-  window.__g3 = { makeMonster, placeMon, charmChance, charmMon, get charm() { return P.charm; }, hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
+  window.__g3 = { startBattle, bAct, makeMonster, placeMon, charmChance, charmMon, get charm() { return P.charm; }, hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
