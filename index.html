@@ -288,8 +288,8 @@
   const ITEMS = {
     berries: { name: 'Berries', d: 'Eat: a little health' },
     meat:    { name: 'Meat', d: 'Eat: restores health' },
-    fish:    { name: 'Raw fish', d: 'Eat, cook at camp, or feed a bear' },
-    cooked:  { name: 'Cooked fish', d: 'Eat: lots of health. Bears love it' },
+    fish:    { name: 'Raw fish', d: 'Eat, cook at camp, or feed a hungry animal' },
+    cooked:  { name: 'Cooked fish', d: 'Eat: lots of health. Animals love it' },
     water:   { name: 'Water', d: 'Drink for magic, or douse a fire' },
     wood:    { name: 'Wood', d: 'Make camp, bridges, melt ice, crafting' },
     stone:   { name: 'Stone', d: 'Sharpen your weapon, throw it, crafting' },
@@ -358,6 +358,7 @@
     frost: { name: 'Frost', cost: 5, d: 20, desc: 'damage and freeze' },
     drain: { name: 'Drain', cost: 6, d: 50, desc: 'steal health' },
     bolt:  { name: 'Lightning', cost: 8, d: 80, desc: 'heavy damage' },
+    charm: { name: 'Charm', cost: 10, d: 250, desc: 'a monster follows you' },
   };
   const SLOTS = [['weapon','Weapon'],['shield','Shield'],['helmet','Helmet'],['chest','Chest'],['legs','Legs'],['boots','Boots'],['ring1','Ring 1'],['ring2','Ring 2']];
   const TIERN = ['Worn','Bronze','Iron','Steel','Mythril','Rune','Star'];
@@ -445,6 +446,7 @@
     ladder: [[".w....w...",".wwwwww...",".w....w...",".w....w...",".wwwwww...",".w....w...",".w....w...",".wwwwww...",".w....w..."], { w: '#b07840' }],
     raft: [["..........","wwwwwwwwww","WrWWWWWrWW","wwwwwwwwww","WrWWWWWrWW","wwwwwwwwww"], { w: '#8a5a2a', W: '#b07840', r: '#e0c890' }],
     sp_fire: [[".....o....","....oo....","...ooy.o..","..ooyyoo..",".ooyyyyo..",".oyywyyo..",".oyywwyo..","..oyyyo...","...ooo...."], { o: '#ff5a1a', y: '#ffb02e', w: '#fff2a8' }],
+    sp_charm: [[".rr..rr...","rRRrrRRr..","rRwRRRRr..","rRRRRRRr..",".rRRRRr...","..rRRr....","...rr....."], { r: '#d83a8c', R: '#ff7ac8', w: '#ffffff' }],
     sp_frost: [["....c.....","..c.c.c...","...ccc....","cccCCCccc.","...ccc....","..c.c.c...","....c....."], { c: '#7ad8ff', C: '#ffffff' }],
     sp_bolt: [[".....yy...","....yy....","...yy.....","..yyyyy...","....yy....","...yy.....","..yy......",".y........"], { y: '#ffe14a' }],
     sp_drain: [["....p.....","...ppp....","..ppPpp...",".ppPPppp..",".pPpppppp.",".ppppppp..","..ppppp..."], { p: '#a050e0', P: '#e0b0ff' }],
@@ -589,7 +591,7 @@
   const isCand = (q, r) => { const at = guy.q + ',' + guy.r + (S && S.cave ? 'c' : ''); if (lockDirty || at !== lockAt) { lockAt = at; lockCheck(); } return candAt(q, r, lockLvl); };
   const HINT = {
     wall: 'A solid rock wall. A bomb might open it... (craft: flint + stone + iron ore)',
-    bear: 'The bear growls and will not budge. It looks hungry... maybe a fish?',
+    bear: 'The animal growls and will not budge. It looks hungry... maybe a fish?',
     chasm: 'A deep chasm. Use 2 wood next to it, or craft a Bridge (press C: 2 wood + vine)',
     burning: 'Someone is trapped in the flames! Water could put it out',
     blaze: 'Wildfire! Water would put it out',
@@ -652,7 +654,7 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, charm: null, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
@@ -710,7 +712,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 63;
+  const BUILD = 64;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1013,7 +1015,7 @@
     if (quiet) { hudDirty = true; return t; }
     const m = monAt(q, r);
     const MSG = { shrine: 'A shrine! Walk onto it to save a checkpoint and open your stash', wall: 'A rock wall seals this hex. Something is hidden inside...',
-      bear: 'A big hungry bear sits here. Fighting it would be foolish', chasm: 'A chasm splits this hex. A bridge would cross it...',
+      bear: 'A big hungry animal sits here. Fighting it would be foolish', chasm: 'A chasm splits this hex. A bridge would cross it...',
       burning: 'FIRE! Someone is trapped in the flames. Bring water, quickly!', ice: 'A frozen block. Something is trapped inside the ice',
       vault: 'A locked vault! Somewhere out there is a key...',
       boulder: 'A huge boulder blocks the way. A pickaxe could break it', cliff: 'A tall cliff. From the top you could see far...',
@@ -1095,7 +1097,7 @@
   }
   // the first rune you ever meet gives a spell book and a free first spell; every rune after that gives a spell point
   // spell points are spent on new spells and stronger spells at a shop
-  const SPCOST = { fire: 1, heal: 1, frost: 1, drain: 2, bolt: 3 };
+  const SPCOST = { fire: 1, heal: 1, frost: 1, drain: 2, bolt: 3, charm: 3 };
   const spellBuyCost = (k) => P.spells[k] ? P.spells[k] : SPCOST[k];
   function learnSpell(tile) {
     if (!P.book) { askBook(tile); return; }
@@ -1170,7 +1172,7 @@
   const springHurt = () => P.hp < maxHP() || P.mp < maxMP() || (pet && pet.hp < pet.max);
   function drinkSpring(t) {
     if (!t || t.type !== 'spring' || t.dry) return;
-    P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; t.dry = 1;
+    P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; t.dry = 1;
     const w = toWorld(t.q, t.r); burst(w.x, w.y - 8, 22, ['#5ad0ff', '#a0f0ff', '#ffffff'], 50, -35, 28);
     toast('You drink the cool spring water. Fully restored!'); hudDirty = true;
   }
@@ -1204,7 +1206,7 @@
     }
     if (t.type === 'shrine') {
       if (S.cp !== t) {
-        S.cp = t; if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max;
+        S.cp = t; if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max;
         if (!t.used) { t.used = true; stats.shrines++; P.hp = mh; P.mp = maxMP(); toast('Checkpoint saved. Health and magic restored! Your stash is here.'); }
         else toast('Checkpoint saved');
         const w = toWorld(t.q, t.r); burst(w.x, w.y - 6, 24, ['#a0f0ff', '#ffffff', '#5ad0ff'], 60, -40, 30);
@@ -1293,7 +1295,7 @@
         if (fr) { S.freeRests--; P.hp = maxHP(); P.mp = maxMP(); toast('You rest at the shrine and feel restored (' + S.freeRests + ' free rest' + (S.freeRests === 1 ? '' : 's') + ' left)'); }
         else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
         else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
-        if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; hudDirty = true; later(spawnMist, 1200); } }); }
+        if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
@@ -1419,7 +1421,7 @@
   }
 
   // ---------- spells on the map ----------
-  const SP_ORDER = ['fire', 'frost', 'bolt', 'drain', 'heal'];
+  const SP_ORDER = ['fire', 'frost', 'bolt', 'drain', 'heal', 'charm'];
   // you know any number of spells but only carry a few; swap them at a shrine, add slots with Arcane Focus
   const spellSlots = () => Math.min(6, 3 + sk('focus'));
   const activeSpells = () => SP_ORDER.filter(k => P.spells[k] && P.loadout && P.loadout.indexOf(k) >= 0);
@@ -1428,10 +1430,11 @@
     tidyLoadout();
     for (const k of SP_ORDER) if (P.spells[k] && P.loadout.length < spellSlots() && P.loadout.indexOf(k) < 0) P.loadout.push(k);
   }
-  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f', 'a:arrow': '#f0e0c0', 'a:farrow': '#ff8a2a', 'a:iarrow': '#8ae0ff', 'a:parrow': '#9aff5a' };
+  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f', charm: '#ff7ac8', 'a:arrow': '#f0e0c0', 'a:farrow': '#ff8a2a', 'a:iarrow': '#8ae0ff', 'a:parrow': '#9aff5a' };
   const SPHELP = { fire: 'On the map: hit a monster, melt ice, light braziers and dark caves, set trees alight. Range 3',
     frost: 'On the map: hit and freeze a monster, put out fires, freeze a lake solid to walk on. Range 3',
-    bolt: 'On the map: heavy damage to a monster, shatter boulders. Range 3', drain: 'On the map: hit a monster and heal yourself. Range 3', heal: 'Heal yourself right now' };
+    bolt: 'On the map: heavy damage to a monster, shatter boulders. Range 3', drain: 'On the map: hit a monster and heal yourself. Range 3', heal: 'Heal yourself right now',
+    charm: 'Charm a monster (not bosses) so it follows and fights for you for a while. Same level as you is a good chance; each level above makes it harder. Range 3' };
   let aim = null, mapFx = [], wtxt = [];
   function lightBrazier(t, how) { t.lit = true; S.boss.have++; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 20, FIRE, 40, -30); toast(how + ' ignites the brazier! (' + S.boss.have + '/3)'); if (S.boss.have >= 3) openLair(); }
   function freezeLake(t) { t.type = 'lakeice'; stats.puzzles++; const g = ri(4, 9) + Math.floor(curD() / 6); P.gold += gm(g); stats.gold += g; if (rnd() < .5) t.loot.push({ kind: 'item', id: 'crystal' }); toast('The lake freezes solid. You can walk across it now! (+' + g + ' gold found in the ice)'); }
@@ -1477,6 +1480,7 @@
     if (!t) return { why: 'Pick a revealed tile' };
     if (hd(t.q - guy.q, t.r - guy.r) > spellRange()) return { why: 'Too far away (range ' + spellRange() + ')' };
     const m = monAt(t.q, t.r);
+    if (k === 'charm') { if (!m) return { why: 'Charm needs a monster to charm' }; if (m.boss) return { why: m.name + ' is far too mighty to charm' }; if (m.warden) return { why: m.name + ' is bound to its sigil and cannot be charmed' }; if (P.charm) return { why: 'You already have ' + P.charm.name + ' following you' }; if (atShrine()) return { why: 'You cannot cast attack magic from a shrine' }; return { fn: () => charmMon(m), mon: true }; }
     if (m) { if (m.boss) return { why: m.name + ' shrugs off spells cast from afar. You must face it!' }; if (k !== 'heal') { if (atShrine()) return { why: 'You cannot cast attack magic from a shrine' }; return { fn: () => spellHitMon(k, m), mon: true }; } }
     if (k === 'fire') {
       if (t.type === 'ice') return { fn: () => meltIce(t, 'Your Fireball') };
@@ -1505,6 +1509,39 @@
     if (k === 'drain' && BONES[ty]) return { x: 1.4, tag: 'RESTLESS DEAD!', msg: 'The old bones feed your drain!' };
     if (k === 'drain' && FUNGI[ty]) return { x: 1.2, tag: 'ROT!', msg: 'The rotting mushrooms feed your drain!' };
     return null;
+  }
+  // ---------- charm: a monster follows you and fights beside you for a while ----------
+  const charmChance = (m) => {
+    const diff = m.L - P.lvl, lv = P.spells.charm || 1;
+    let p = diff > 0 ? .65 - .12 * diff : .65 + .04 * -diff;   // same level: a good chance; every level above it is harder
+    p += .04 * (lv - 1) + .2 * (1 - m.hp / m.maxHp) - (m.elite ? .12 : 0);
+    return clamp(p, .04, .92);
+  };
+  function charmDone(m, lv) {
+    mons.delete(key(m.q, m.r)); const left = 30 + 10 * (lv - 1);
+    P.charm = { name: m.name.replace(/^Elite /, ''), base: m.base, L: m.L, atk: m.atk * .8, def: m.def, hp: m.hp, max: m.maxHp, left }; charmPos = null; hudDirty = true;
+    toast(m.name + ' is charmed! It will follow and fight for you for ' + left + ' tiles.');
+  }
+  function charmMon(m) {
+    if (!mons.has(key(m.q, m.r))) return; const lv = P.spells.charm || 1, c = charmChance(m);
+    if (rnd() < c) { const w = toWorld(m.q, m.r); burst(w.x, w.y - 14, 18, ['#ff7ac8', '#ffffff'], 40, -30); charmDone(m, lv); return; }
+    wtxt.push({ x: m.x, y: m.y - 24, txt: 'resists', col: '#ff9ac8', t: gt });
+    if (m.warden) return toast(m.name + ' shrugs off the charm');
+    m.roam = true; m.hunted = true; m.fury = true; m.cool = 0; toast(m.name + ' shrugs off the charm (' + Math.round(c * 100) + '% chance) and charges at you!');
+  }
+  let charmPos = null;
+  function drawCharm(ox, oy) {
+    const cm = P.charm, bx = charmPos.x + ox, by = charmPos.y + oy, mvg = Math.abs(charmPos.tx - charmPos.x) + Math.abs(charmPos.ty - charmPos.y) > 1, hop = mvg ? Math.round(Math.abs(Math.sin(gt * 10)) * 2) : 0;
+    const fm = { base: cm.base, roam: false, L: cm.L, name: cm.name }, L = monLP(fm, 1), c = L ? { width: L.pw, height: L.ph } : monCanvas(fm);
+    ell(bx, by, Math.ceil(c.width / 2.4), 2, 'rgba(0,20,8,0.45)'); glow(bx, by - c.height / 2, 16, '#ff7ac8', .3);
+    if (L) lpFeet(L, bx, by - hop, charmPos.face > 0); else drawFeet(c, bx, by - hop, charmPos.face > 0, 1);
+    text('\u2665 ' + cm.name, bx, by - c.height - 10 - hop, '#ff9ac8', .7);
+    if (cm.hp < cm.max) { px(bx - 8, by + 3, 16, 3, '#000'); px(bx - 7, by + 4, Math.max(1, Math.round(14 * cm.hp / cm.max)), 1, '#7dff8f'); }
+  }
+  function charmTick(dt) {
+    if (!P.charm) { charmPos = null; return; }
+    const tx = guy.x - 14, ty = guy.y + 3; if (!charmPos || Math.hypot(charmPos.x - tx, charmPos.y - ty) > 90) charmPos = { x: tx, y: ty, face: 1, tx, ty };
+    charmPos.tx = tx; charmPos.ty = ty; const k = Math.min(1, dt * 3.2); if (Math.abs(tx - charmPos.x) > 1) charmPos.face = tx > charmPos.x ? 1 : -1; charmPos.x += (tx - charmPos.x) * k; charmPos.y += (ty - charmPos.y) * k;
   }
   function spellHitMon(k, m) {
     if (!mons.has(key(m.q, m.r))) return;
@@ -1595,10 +1632,10 @@
     }
     if (id === 'fish' || id === 'cooked') {
       const b = near('bear'), bf = near('bearfriend');
-      if (b) O.push({ label: 'Use: give to bear', sub: 'it looks hungry', better: true, run() {
+      if (b) O.push({ label: 'Use: give to ' + animalOf(b), sub: 'it looks hungry', better: true, run() {
         spend(); stats.bears++; stats.puzzles++; const d = S.revealed, g = ri(6, 12) + Math.floor(d / 5); P.gold += gm(g); stats.gold += g;
         b.loot.push(makeGear(d, 1)); b.loot.push(randItem(d));
-        befriend(b, id, 'The bear munches happily. It was sitting on a stash (+' + g + ' gold).'); } });
+        befriend(b, id, 'The ' + animalOf(b) + ' munches happily. It was sitting on a stash (+' + g + ' gold).'); } });
       else if (bf && (!pet || (petKind() === animalOf(bf) && (pet.lvl || 1) < 3))) O.push({ label: 'Use: feed the ' + animalOf(bf), sub: pet ? 'it might join your ' + petKind() + ' and grow stronger' : 'it might follow you', off: pet && !unlocked('merge') ? 'Animal bonds ' + lockMsg('merge').toLowerCase() : false, run() { spend(); befriend(bf, id, 'The ' + animalOf(bf) + ' eats.'); } });
     }
     if (pet && (id === 'fish' || id === 'cooked' || id === 'meat' || id === 'berries')) O.push({ label: 'Use: feed your ' + petName(), sub: 'keeps it fed and happy', better: true, run() {
@@ -1766,6 +1803,11 @@
       else if (arg === 'bolt') blog('Lightning strikes for ' + hitMon((11 + 4 * L) * pw, '#fff2a8') + '!');
       else if (arg === 'frost') { const d = hitMon((4 + 1.8 * L) * pw, '#a0e8ff'); const f = !m.elite || rnd() < .6; if (f) B.frozen = 1; blog('Frost deals ' + d + (f ? ' and freezes it.' : ', but it resists the freeze.')); }
       else if (arg === 'drain') { const d = hitMon((5 + 2 * L) * pw, '#c878ff'), h = Math.round(d * .6); P.hp = Math.min(mh, P.hp + h); fx('+' + h, 'p', '#7dff8f'); blog('Drain steals ' + d + ' (+' + h + ' HP).'); }
+      else if (arg === 'charm') {
+        if (m.boss) blog(m.name + ' is far too mighty to charm.'); else if (P.charm) blog('You already have ' + P.charm.name + ' following you.');
+        else if (rnd() < charmChance(m)) { charmDone(m, lv); B.result = 'fled'; B.turn = 'done'; if (TEST) closeBattle(); else { renderBattle(); later(closeBattle, 600); } return; }
+        else blog(m.name + ' shrugs off the charm.');
+      }
       else if (arg === 'heal') { const b = P.hp; P.hp = Math.min(mh, P.hp + Math.round(mh * (.35 + .05 * (lv - 1)) * spMul())); fx('+' + (P.hp - b), 'p', '#7dff8f'); blog('You heal ' + (P.hp - b) + ' HP.'); }
     } else if (type === 'item' && P.bag[arg] === 'smoke') {
       if (m.boss) return; P.bag.splice(arg, 1); stats.items++; stats.fled++; m.cool = gt + 8; blog('You vanish in a cloud of smoke!'); B.result = 'fled'; B.turn = 'done'; hudDirty = true;
@@ -1778,6 +1820,7 @@
       blog('You could not escape!');
     }
     if (pet && m.hp > 0) blog('Your ' + petName() + ' swipes for ' + hitMon(petAtk() * (.8 + .4 * rnd()) - mdef(m) * .5, '#ffd0a0') + '.');
+    if (P.charm && m.hp > 0) blog(P.charm.name + ' attacks for ' + hitMon(P.charm.atk * (.8 + .4 * rnd()) - mdef(m) * .5, '#ff9ac8') + '.');
     if (P.hire && m.hp > 0) blog(P.hire.name + ' strikes for ' + hitMon(P.hire.atk * (.8 + .4 * rnd()) - mdef(m) * .5, '#ffe0a0') + '.');
     B.menu = 'main';
     if (m.hp <= 0) return winBattle();
@@ -1815,6 +1858,10 @@
       else if (pet && rnd() < .3) {
         const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your ' + petName() + ' for ' + d + '.');
         if (pet.hp <= 0) { blog('Your ' + petName() + ' is badly hurt and limps home to its den.'); petHome(); }
+      }
+      else if (P.charm && rnd() < .2) {
+        const cc = P.charm, d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()) * (1 - Math.min(.5, cc.def * .04)))); cc.hp = Math.max(0, cc.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' hits ' + cc.name + ' for ' + d + '.');
+        if (cc.hp <= 0) { blog(cc.name + ' is badly hurt and breaks free of the charm.'); P.charm = null; }
       }
       else if (P.hire && rnd() < .22) {
         const hr = P.hire, d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()) * (1 - Math.min(.5, hr.def * .04)))); hr.hp = Math.max(0, hr.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' strikes ' + hr.name + ' for ' + d + '.');
@@ -1921,7 +1968,7 @@
     const isBest = !ab && S.revealed > best; if (isBest) { best = S.revealed; try { localStorage.setItem('hexworld_g3_best', String(best)); } catch (e) {} }
     const secs = Math.floor((Date.now() - S.t0) / 1000);
     const rows = [['Space gems', S.gems], ['Tiles revealed', S.revealed + (isBest ? ' (new best!)' : '')], ['Best ever', best], ['Bosses slain', stats.bosses], ['Caves explored', stats.caves + ' (' + stats.caveTiles + ' cave tiles)'], ['Cave guardians slain', stats.guardians], ['Monsters slain', stats.kills], ['Elites slain', stats.elites], ['Level reached', P.lvl], ['Skill ranks learned', Object.values(P.sk).reduce((a, b) => a + b, 0)],
-      ['Puzzles solved', stats.puzzles], ['Items crafted', stats.crafted], ['Bears befriended', stats.bears], ['Cliff lookouts', stats.lookouts], ['Gold collected', stats.gold], ['Chests opened', stats.chests],
+      ['Puzzles solved', stats.puzzles], ['Items crafted', stats.crafted], ['Animals befriended', stats.bears], ['Cliff lookouts', stats.lookouts], ['Gold collected', stats.gold], ['Chests opened', stats.chests],
       ['Checkpoints found', stats.shrines], ['Steps walked', stats.steps], ['Farthest from start', stats.far + ' tiles'], ['Damage dealt', stats.dealt], ['Damage taken', stats.taken], ['Spells cast', stats.spells],
       ['Items used', stats.items], ['Traps sprung', stats.traps], ['Battles fled', stats.fled], ['Time', Math.floor(secs / 60) + 'm ' + (secs % 60) + 's']];
     if (TEST) return;
@@ -1997,7 +2044,7 @@
   function finishStep() {
     const mv = guy.mv; guy.prev = mv.from; if (pet) { pet.q = mv.from.q; pet.r = mv.from.r; }
     guy.q = mv.to.q; guy.r = mv.to.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null;
-    stats.steps++; if (P.hire) P.hire.left--; petHunger(); poisonTick(); chestAge();
+    stats.steps++; if (P.hire) P.hire.left--; if (P.charm && --P.charm.left <= 0) { toast('The charm fades and ' + P.charm.name + ' wanders off.'); P.charm = null; hudDirty = true; } petHunger(); poisonTick(); chestAge();
     if (P.tt > 0 && P.bag.includes('ttorch')) { P.tt--; if (P.tt <= 0) { P.bag.splice(P.bag.indexOf('ttorch'), 1); toast('Your burning torch sputters out'); } else if (P.tt <= 2) toast('Your burning torch is nearly out (' + P.tt + ' tile' + (P.tt > 1 ? 's' : '') + ' left)'); }
     onEnter(curTile()); hudDirty = true;
     if (!B && S.state === 'play') roamTick();   // monsters take one tile for every tile you take
@@ -3193,7 +3240,7 @@
     const list = [];
     for (const t of tiles.values()) { const w = toWorld(t.q, t.r), sx = w.x + ox, sy = w.y + oy; if (sx < -50 || sx > W + 50 || sy < -60 || sy > H + 70) continue; list.push({ t, w, y: w.y }); }
     for (const m of mons.values()) { const sx = m.x + ox, sy = m.y + oy; if (sx < -60 || sx > W + 60 || sy < -80 || sy > H + 80) continue; list.push({ m, y: m.y + .3 }); }
-    list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 }); if (P.hire && hirePos) list.push({ hired: 1, y: hirePos.y + .4 });
+    list.push({ guy: 1, y: (guy.mv ? Math.max(toWorld(guy.mv.from.q, guy.mv.from.r).y, toWorld(guy.mv.to.q, guy.mv.to.r).y) : guy.y) + .5 }); if (pet) list.push({ pet: 1, y: pet.y + .4 }); if (P.hire && hirePos) list.push({ hired: 1, y: hirePos.y + .4 }); if (P.charm && charmPos) list.push({ charmed: 1, y: charmPos.y + .4 });
     if (S.state === 'play' && !guy.mv && !caveFull() && !warpMode) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); else if (sealedBy(q, r)) list.push({ cand: 1, sealed: 1, q, r, y: toWorld(q, r).y - .1 }); }
     if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
     list.sort((a, b) => a.y - b.y);
@@ -3201,6 +3248,7 @@
       if (it.guy) drawGuy(ox, oy);
       else if (it.pet) drawPet(ox, oy);
       else if (it.hired) drawHired(ox, oy);
+      else if (it.charmed) drawCharm(ox, oy);
       else if (it.m) drawMon(it.m, ox, oy);
       else if (it.cand) { const w = toWorld(it.q, it.r), hv = hoverC && hoverC.q === it.q && hoverC.r === it.r, pul = .5 + .5 * Math.sin(gt * 4);
         if (it.sealed) { const x = Math.round(w.x) + ox, y = Math.round(w.y) + oy; outlineHex(x, y, '#5a3030', 'rgba(60,20,20,0.25)'); px(x - 3, y - 4, 6, 5, '#b89070'); px(x - 2, y - 7, 1, 3, '#b89070'); px(x + 1, y - 7, 1, 3, '#b89070'); px(x - 1, y - 8, 2, 1, '#b89070'); px(x - 1, y - 3, 2, 2, '#3a2010'); }
@@ -3414,6 +3462,7 @@
       '<div class="bar xp"><i style="width:' + pct(P.xp, xn) + '"></i><span>XP ' + P.xp + ' / ' + xn + '</span></div>' +
       '<div class="kv"><span>Tiles</span><b>' + S.revealed + '</b><span>Level</span><b>' + P.lvl + '</b><span>Gold</span><b style="color:#ffd23a">' + P.gold + '</b><span>Best</span><b>' + best + '</b><span>Attack</span><b>' + pAtk() + '</b><span>Defense</span><b>' + pDef() + '</b></div>' +
       (pet ? '<div class="call bear"><b>' + petName().replace(/^./, c => c.toUpperCase()) + ' buddy</b> · HP ' + pet.hp + ' / ' + pet.max + '</div>' : '') +
+      (P.charm ? '<div class="call bear"><b>\u2665 ' + P.charm.name + '</b> (charmed) · HP ' + P.charm.hp + ' / ' + P.charm.max + '<br>' + Math.max(0, P.charm.left) + ' tiles of charm left</div>' : '') +
       (P.hire ? '<div class="call bear"><b>' + P.hire.name + '</b> (' + P.hire.cls + ') · HP ' + P.hire.hp + ' / ' + P.hire.max + '<br>' + Math.max(0, P.hire.left) + ' tiles of wages left</div>' : '');
     if (S.cave) st += '<div class="call cave"><b>IN A CAVE</b> · ' + S.cave.n + ' / ' + S.cave.max + ' explored<br>' + (S.cave.guard ? (mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'Guardian: ' + S.cave.guard.name + ' (Lv ' + S.cave.guard.L + ')' : 'Guardian defeated!') : 'The guardian hides deeper...') + '<br>Climb the rope to leave</div>';
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
@@ -4631,6 +4680,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     if (h.hp < h.max) { px(bx - 8, by + 3, 16, 3, '#000'); px(bx - 7, by + 4, Math.max(1, Math.round(14 * h.hp / h.max)), 1, '#7dff8f'); }
   }
   function hireTick(dt) {
+    charmTick(dt);
     if (!P.hire) { hirePos = null; return; }
     const tx = guy.x + 13, ty = guy.y; if (!hirePos || Math.hypot(hirePos.x - tx, hirePos.y - ty) > 90) hirePos = { x: tx, y: ty, face: 1, tx, ty };
     hirePos.tx = tx; hirePos.ty = ty; const k = Math.min(1, dt * 3.5); if (Math.abs(tx - hirePos.x) > 1) hirePos.face = tx > hirePos.x ? 1 : -1; hirePos.x += (tx - hirePos.x) * k; hirePos.y += (ty - hirePos.y) * k;
@@ -4901,7 +4951,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && !window.matchMedia('(max-width:760px)').matches && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
-  window.__g3 = { hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
+  window.__g3 = { makeMonster, placeMon, charmChance, charmMon, get charm() { return P.charm; }, hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
