@@ -1,1 +1,1 @@
-{ "build": 65, "notes": "Bows can now be used in battle (Shoot). Shrines you have not visited yet glow warmly." }
+{ "build": 66, "notes": "Smoother on slow screens: the game now lowers its drawing sharpness by itself when the frame rate stays low." }

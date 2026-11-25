@@ -712,7 +712,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 65;
+  const BUILD = 66;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2741,7 +2741,8 @@
 
   // ---- texture cache: built a few per frame, old art shows until ready ----
   const TEX = new Map(), TQ = [], TQS = new Set();
-  let texM = 3, dpr = 1;
+  let texM = 3, dpr = 1, rq = 1, qWin = { n: 0, slow: 0, t: 0 };   // rq: render quality, 1 = full; the game lowers it by itself on a slow screen
+  try { const v = parseFloat(localStorage.getItem('hexq')); if (v >= .4 && v <= 1) rq = v; } catch (_) {}
   function texGet(k, build) { let e = TEX.get(k); if (e && e.c && e.c.lost) { TEX.delete(k); e = null; } if (e && e.m === texM) return e.c; if (!TQS.has(k)) { TQS.add(k); TQ.push([k, build]); } return e ? e.c : null; }
   function texNow(k, build, m) { m = m || texM; const e = TEX.get(k); if (e && e.m === m && !(e.c && e.c.lost)) return e.c; const c = build(m); TEX.set(k, { c, m }); return c; }
   function texPump(ms) { const t0 = performance.now(); while (TQ.length && performance.now() - t0 < ms) { const [k, build] = TQ.shift(); TQS.delete(k); const e = TEX.get(k); if (e && e.m === texM) continue;
@@ -3207,8 +3208,18 @@
     pAcc += dt; pN++; if (dt > pWorst) pWorst = dt;
     if (pAcc > 1) { pShow = Math.round(pN / pAcc) + ' fps  worst ' + Math.round(pWorst * 1000) + 'ms  save ' + Math.round(saveMs) + 'ms\ntiles ' + tiles.size + '  monsters ' + mons.size; perfEl.textContent = pShow; pAcc = 0; pN = 0; pWorst = 0; }
   }
+  // a slow screen (weak graphics card, 4K) draws fewer pixels: after a few seconds of low frame rate the game steps its drawing size down, and remembers it
+  function autoQuality(raw) {
+    if (document.hidden || raw > .5) { qWin.n = qWin.slow = 0; return; }
+    qWin.n++; if (raw > .036) qWin.slow++; qWin.t += raw;
+    if (qWin.t < 3.5) return;
+    const bad = qWin.n > 20 && qWin.slow / qWin.n > .6; qWin.n = qWin.slow = 0; qWin.t = 0;
+    if (!bad || rq <= .5 || TQ.length > 12) return;
+    rq = Math.max(.5, Math.round((rq - .15) * 100) / 100); try { localStorage.setItem('hexq', String(rq)); } catch (_) {}
+    resize(); qWin.t = -2; toast('Screen is running slowly, so the game now draws at a lower sharpness (' + Math.round(rq * 100) + '%)');
+  }
   function frame() {
-    const now = performance.now() / 1000, dt = Math.min(.05, now - last); last = now; if (!updBlock) gt += dt;
+    const now = performance.now() / 1000, raw = now - last, dt = Math.min(.05, raw); last = now; if (!TEST) autoQuality(raw); if (!updBlock) gt += dt;
     update(dt);
     const ct = curTile();
     cam.x += (guy.x - cam.x) * .08; cam.y += (guy.y - 10 - elev(ct) - cam.y) * .08;
@@ -4951,7 +4962,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   window.addEventListener('pagehide', () => saveNow());
   if (!TEST) document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); else checkUpdate(); });
   function resize() {
-    scale = curScale(); dpr = TEST ? 1 : Math.min(window.innerWidth * window.innerHeight > 600000 ? 2 : 2.5, window.devicePixelRatio || 1);
+    scale = curScale(); dpr = TEST ? 1 : Math.min(window.innerWidth * window.innerHeight > 600000 ? 2 : 2.5, window.devicePixelRatio || 1) * rq;
     W = Math.ceil(window.innerWidth / scale); H = Math.ceil(window.innerHeight / scale);
     const uz = window.innerWidth < 760 ? 1 : clamp(Math.min(window.innerHeight / 820, window.innerWidth / 1350), 1, 2);
     if (!TEST) document.documentElement.style.setProperty('--uz', uz.toFixed(3));
