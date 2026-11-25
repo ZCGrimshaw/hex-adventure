@@ -1,1 +1,1 @@
-{ "build": 66, "notes": "Smoother on slow screens: the game now lowers its drawing sharpness by itself when the frame rate stays low." }
+{ "build": 67, "notes": "A campfire built next to a block of ice now melts it." }

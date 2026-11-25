@@ -585,7 +585,7 @@
     if (!DIRS.some(([a, b]) => { const t = tiles.get(key(q + a, r + b)); return !!t && !blocked(t); })) return null;
     return nearBlock(q, r, lockLvl);
   }
-  const SEALHOW = { wall: 'blast it with a bomb', chasm: 'bridge it (2 wood next to it, or a crafted Bridge)', ice: 'melt it with fire or a campfire', vault: 'open it with a vault key', boulder: 'break it with a pickaxe', cliff: 'climb it with a ladder', lake: 'cross it with a raft', cdoor: 'open it with a crystal key' };
+  const SEALHOW = { wall: 'blast it with a bomb', chasm: 'bridge it (2 wood next to it, or a crafted Bridge)', ice: 'melt it with fire, or build a campfire on a hex next to it', vault: 'open it with a vault key', boulder: 'break it with a pickaxe', cliff: 'climb it with a ladder', lake: 'cross it with a raft', cdoor: 'open it with a crystal key' };
   const TNAME = { wall: 'rock wall', chasm: 'chasm', ice: 'ice block', vault: 'vault', boulder: 'boulder', cliff: 'cliff', lake: 'lake', cdoor: 'crystal door' };
   const sealMsg = (b) => 'Sealed off by the ' + TNAME[b.type] + ' next to it. Deal with the ' + TNAME[b.type] + ' first: ' + SEALHOW[b.type] + ', or explore another way.';
   const isCand = (q, r) => { const at = guy.q + ',' + guy.r + (S && S.cave ? 'c' : ''); if (lockDirty || at !== lockAt) { lockAt = at; lockCheck(); } return candAt(q, r, lockLvl); };
@@ -595,7 +595,7 @@
     chasm: 'A deep chasm. Use 2 wood next to it, or craft a Bridge (press C: 2 wood + vine)',
     burning: 'Someone is trapped in the flames! Water could put it out',
     blaze: 'Wildfire! Water would put it out',
-    ice: 'A solid block of ice. Fire would melt it: a Fireball, or a campfire made with wood',
+    ice: 'A solid block of ice. Fire would melt it: a Fireball, or a campfire built on a hex next to it',
     vault: 'A locked vault. You need an old key, dropped by powerful monsters: elites, guardians, bosses, trolls, golems, demons and dragons',
     cave: 'Pitch black inside. A torch would light the way (craft: wood + flint)',
     boulder: 'A huge boulder. A pickaxe could smash it (craft: wood + 2 iron ore, needs the Artisan skill)',
@@ -712,7 +712,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 66;
+  const BUILD = 67;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1248,9 +1248,9 @@
       else A.push({ label: 'Draw water', sub: 'refills slowly', off: 'Drawn dry for now: it refills slowly', run() {} }); };
     const plain = !t.loot.length && (t.type === 'grass' || t.type === 'dirt' || t.type === 'rubble' || t.type === 'cfloor') && !(S.cp === t);
     if (plain) { const w = countOf('wood'), lit = countOf('flint') > 0 ? 'flint' : countOf('torch') > 0 ? 'torch' : null;
-      A.push({ label: 'Build a campfire', sub: '2 wood + flint (or a torch) · cook fish, rest, keeps for a while', off: (w < 2 || !lit) && 'Needs 2 wood and flint (or a torch)', run() {
+      A.push({ label: 'Build a campfire', sub: '2 wood + flint (or a torch) · cook, rest, melts ice next to it', off: (w < 2 || !lit) && 'Needs 2 wood and flint (or a torch)', run() {
         const take = (k) => P.bag.splice(P.bag.indexOf(k), 1); take('wood'); take('wood'); take(lit);
-        t.type = 'campfire'; t.fireUntil = gt + 240; t.rested = false; const p = toWorld(t.q, t.r); burst(p.x, p.y - 8, 18, FIRE, 30, -40, 10); toast('You build a crackling campfire'); } }); }
+        t.type = 'campfire'; t.fireUntil = gt + 240; t.rested = false; const p = toWorld(t.q, t.r); burst(p.x, p.y - 8, 18, FIRE, 30, -40, 10); if (!meltAround(t, 'Your campfire')) toast('You build a crackling campfire'); } }); }
     if (t.type === 'campfire') {
       const fish = countOf('fish'), mins = Math.max(1, Math.round((t.fireUntil - gt) / 60));
       A.push({ label: 'Cook fish', sub: fish ? 'cook all ' + fish + ' raw fish' : 'no raw fish in your bag', better: fish > 0, off: !fish && 'You have no raw fish', run() {
@@ -1406,8 +1406,11 @@
     burst(p.x, p.y - 8, 34, ['#aab4be', '#6c7782', '#ffffff'], 70, -30);
     toast('CRACK! The boulder shatters. Ore and ' + g + ' gold tumble out');
   }
+  // a burning campfire (or lit brazier) melts any ice block touching it
+  function meltAround(t, how) { let n = 0; for (const [a, b] of DIRS) { const i = tiles.get(key(t.q + a, t.r + b)); if (i && i.type === 'ice') { meltIce(i, how); n++; } } return n; }
   function fireTick() {
     for (const t of [...tiles.values()]) {
+      if ((t.type === 'campfire' && gt <= (t.fireUntil || 0)) || (t.type === 'brazier' && t.lit)) meltAround(t, 'The heat of the fire');
       if (t.regrow && gt > t.regrow.at && (t.type === 'grass' || t.type === 'rubble') && !monAt(t.q, t.r) && !(t.q === guy.q && t.r === guy.r)) { t.type = t.regrow.type; t.units = t.type === 'crystal' ? 1 : 2; t.stump = false; t.regrow = null; { const p = toWorld(t.q, t.r); burst(p.x, p.y - 8, 10, t.type === 'crystal' ? ['#9fe8ff', '#ffffff'] : t.type === 'ore' || t.type === 'flint' ? ['#9a9ea8', '#d8d8e0'] : ['#7dff8f', '#3fb85a'], 18, -26, 6); } }
       if (t.type === 'river' && t.fish < 2 && gt > (t.fishAt || 0)) { t.fish++; t.fishAt = gt + 60; }
       if (t.type === 'trap' && t.sprung && gt > (t.sprungAt || 0) + 3) { t.type = 'grass'; t.sprung = false; }
@@ -3184,7 +3187,7 @@
     spring: 'Healing spring: drink to restore health and magic', rune: 'Rune stone: your first is a spell book, the rest give spell points', mystery: '??? Step on it to find out', merchant: 'Shop: spend your gold', shrine: 'Shrine: checkpoint + your stash (monsters cannot attack you here)', trap: 'Grass',
     wall: 'Rock wall: a bomb could open it', bear: 'Hungry animal: do not fight it. Give it a fish', bearfriend: 'A happy, full animal. Feed it again and it might join you',
     chasm: 'Chasm: bridge it with 2 wood', bridge: 'Bridge', burning: 'Fire! Someone is trapped. Douse it with water', blaze: 'Wildfire: douse with water',
-    ice: 'Ice block: melt with Fireball or a campfire (wood)', vault: 'Locked vault: needs an old key', vines: 'Vines: cut for rope making', ore: 'Iron ore vein', flint: 'Flint outcrop',
+    ice: 'Ice block: melt with Fireball or a campfire next to it', vault: 'Locked vault: needs an old key', vines: 'Vines: cut for rope making', ore: 'Iron ore vein', flint: 'Flint outcrop',
     crystal: 'Crystal shards', cave: 'Dark cave: a torch lets you go inside', boulder: 'Boulder: needs a pickaxe', cliff: 'Cliff: needs a ladder. The top gives a lookout',
     cliffup: 'Clifftop lookout', lake: 'Deep lake: needs a raft', lakeraft: 'Your raft on the lake', cdoor: 'Crystal door: needs a crystal key', rubble: 'Rubble', lakeice: 'Frozen lake: safe to walk on', cfloor: 'Cave floor', stalag: 'Stalagmites', shrooms: 'Glowcap mushrooms: food', pool: 'Underground pool: water and blind fish', bones: 'Remains of a lost explorer', bonesdone: 'Searched remains',
     gemvein: 'SPACE GEM vein! A pickaxe makes mining it safe', den: 'Guardian den', dendone: 'The guardian\'s empty den', caveexit: 'Rope back to the surface', cavedone: 'A collapsed cave', cavelit: 'Lit cave entrance: step on it to go inside',
