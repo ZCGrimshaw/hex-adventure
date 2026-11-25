@@ -712,7 +712,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 67;
+  const BUILD = 68;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1644,6 +1644,14 @@
     if (pet && (id === 'fish' || id === 'cooked' || id === 'meat' || id === 'berries')) O.push({ label: 'Use: feed your ' + petName(), sub: 'keeps it fed and happy', better: true, run() {
       spend(); const full = id !== 'berries'; pet.hunger = full ? 0 : Math.max(0, (pet.hunger || 0) - 40);
       pet.hp = Math.min(pet.max, pet.hp + Math.round(pet.max * (id === 'cooked' ? 1 : id === 'berries' ? .15 : .5))); toast('Your ' + petName() + ' munches happily. HP ' + pet.hp + ' / ' + pet.max); } });
+    // spells cast on things in your bag: a spark lights wood, a flame cooks fish, frost chills water, and so on
+    { const COMBO = { wood: [['fire', 'light it as a torch', 'torch', 'Flames leap up and the wood becomes a torch'], ['bolt', 'strike it into a torch', 'torch', 'Lightning sets the wood ablaze: a torch']],
+        fish: [['fire', 'cook it on the spot', 'cooked', 'The fish sizzles into a cooked meal'], ['bolt', 'zap it cooked', 'cooked', 'A crackle of lightning cooks the fish']],
+        water: [['frost', 'chill it into a frost flask', 'frost', 'The water freezes into a frost flask'], ['heal', 'bless it into a health potion', 'hpot', 'The water glows green: a health potion'], ['bolt', 'charge it into a magic potion', 'mpot', 'The water crackles with magic: a magic potion']] };
+      for (const [k, label, gives, msg] of COMBO[id] || []) { if (!(P.spells[k] > 0)) continue; const sp = SPELLS[k];
+        O.push({ label: 'Cast ' + sp.name + ': ' + label, sub: sp.cost + ' MP · turns it into ' + ITEMS[gives].name.toLowerCase(), better: P.mp >= sp.cost, off: P.mp < sp.cost && 'Needs ' + sp.cost + ' MP', run() {
+          P.mp -= sp.cost; stats.spells++; stats.items++; P.bag.splice(P.bag.indexOf(id), 1, gives); const w = toWorld(guy.q, guy.r);
+          burst(w.x, w.y - 14, 16, k === 'frost' ? ['#bfe8ff', '#ffffff', '#5ad0ff'] : k === 'heal' ? ['#7dff8f', '#ffffff'] : k === 'bolt' ? ['#fff2a8', '#ffffff', '#8ae0ff'] : FIRE, 40, -30); hudDirty = true; toast(msg); } }); } }
     if (id === 'water') { const f = near('burning') || near('blaze');
       if (f) O.push({ label: 'Use: douse fire', sub: f.type === 'burning' ? 'someone is trapped inside!' : 'stop the wildfire', better: true, run() { spend(); douse(f); } }); }
     if (id === 'bridge') { const c = near('chasm');
@@ -4979,7 +4987,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && !window.matchMedia('(max-width:760px)').matches && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
-  window.__g3 = { startBattle, bAct, makeMonster, placeMon, charmChance, charmMon, get charm() { return P.charm; }, hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
+  window.__g3 = { dirty() { hudDirty = true; }, startBattle, bAct, makeMonster, placeMon, charmChance, charmMon, get charm() { return P.charm; }, hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
