@@ -1,1 +1,1 @@
-{ "build": 69, "notes": "Each time you press Remind me later on a skill point, the next reminder waits one more minute." }
+{ "build": 70, "notes": "The skill point reminder now keeps its longer wait when you earn a new point, and shows it on the button." }

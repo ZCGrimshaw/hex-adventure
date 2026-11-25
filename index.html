@@ -712,7 +712,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 69;
+  const BUILD = 70;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2122,7 +2122,7 @@
       fireT += dt; if (fireT > 5) { fireT = 0; fireTick(); }
       if (mistCap()) { mistT += dt; if (mistT > 22) { mistT = 0; spawnMist(); } } else mistT = 0;
     }
-    if (!TEST) { if (P.sp !== skillSp) { if (P.sp > skillSp) { skillRemind = gt + 3.5; skillSnooze = 0; } skillSp = P.sp; }
+    if (!TEST) { if (P.sp !== skillSp) { if (P.sp > skillSp) skillRemind = gt + 3.5; if (P.sp === 0) skillSnooze = 0; skillSp = P.sp; }
       if (P.sp > 0 && gt >= skillRemind && !springOpen && !B && S.state === 'play' && !guy.mv && !skillsOpen && !shopOpen && !menuOpen && !stashOpen && !craftOpen && !bookOpen && !hallOpen && !inspectOpen && !warpMode && skillAvail()) askSkills(); }
     hireTick(dt);
     if (pet) { const w = toWorld(pet.q, pet.r), k = Math.min(1, dt * 4); if (Math.abs(w.x - pet.x) > 1) pet.face = w.x > pet.x ? 1 : -1; pet.x += (w.x - pet.x) * k; pet.y += (w.y - pet.y) * k; }
@@ -4654,7 +4654,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   }
   const hireScore = () => stats.bosses * 3 + stats.puzzles + stats.caves + stats.shrines;   // big deeds the hired hand shared in
   const planTotal = (rate, p) => Math.max(1, Math.round(rate * p[0] * (1 - p[1])));
-  // skill point reminder: appears when you are idle with points to spend; "Remind me later" snoozes it for 4 minutes, plus one more minute each time it is pressed (a new level-up resets it and brings it back)
+  // skill point reminder: appears when you are idle with points to spend; "Remind me later" snoozes it for 4 minutes, plus one more minute each time it is pressed (a new level-up brings it back; spending your points resets it)
   let skillRemind = 0, skillSp = 0, skillSnooze = 0;   // skillSnooze: how many times in a row the player has said 'remind me later'
   const skillAvail = () => SKILLS.some(x => skCur(x.id) < x.max && P.sp >= skillCost(x, skCur(x.id)));
   function askSkills() {
