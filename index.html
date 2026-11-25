@@ -165,6 +165,33 @@
     .grid { grid-template-columns:repeat(8,38px); } .grid .slot { width:38px; height:42px; } .grid .slot .n { display:none; }
     .btn { height:48px; padding:4px 8px; }
   }
+  /* phone: the character, gear and map panels become round buttons that open a small window, then full screen */
+  #bStat, #bBars, #rbtns { display:none; }
+  .rbtn { box-sizing:border-box; width:54px; height:54px; border-radius:50%; border:3px solid #5a7a64; background:radial-gradient(#243a2c,#0a140e); box-shadow:0 3px 0 #0008, inset 0 0 0 1px #000; padding:0; display:flex; align-items:center; justify-content:center; cursor:pointer; touch-action:manipulation; }
+  .rbtn.on { border-color:#ffe14a; box-shadow:0 0 12px #ffe14a88, 0 3px 0 #0008; }
+  #bStat { background:conic-gradient(#e24a56 calc(var(--hp,100) * 1%), #3a1a20 0); border:0; padding:4px; }
+  #bStat > span { width:100%; height:100%; border-radius:50%; background:radial-gradient(#243a2c,#0a140e); display:flex; align-items:center; justify-content:center; font-size:19px; font-weight:800; color:#fff; border:2px solid #000; box-sizing:border-box; }
+  #bStat.sp > span { color:#ffe14a; } #bStat.on { box-shadow:0 0 12px #ffe14a88, 0 3px 0 #0008; }
+  #bBars i { display:block; width:74px; height:9px; background:#050805; border:2px solid #000; box-shadow:0 0 0 1px #3a4a3f; border-radius:3px; overflow:hidden; margin-bottom:4px; } #bBars i b { display:block; height:100%; }
+  #bBars .hpb b { background:linear-gradient(#ee5560,#a8202c); } #bBars .mpb b { background:linear-gradient(#5a82f0,#2a46b8); }
+  @media (max-width:760px) {
+    #bStat { display:flex; left:10px; top:10px; z-index:5; } #bBars { display:block; left:70px; top:16px; z-index:5; }
+    #rbtns { display:flex; right:10px; top:10px; gap:8px; z-index:5; }
+    #stat, #side { display:none; z-index:4; }
+    body.pv-stat #bBars { display:none; }
+    body.pv-stat #stat { display:block; left:10px; top:72px; width:190px; }
+    body.pv-gear #side, body.pv-map #side { display:flex; right:10px; top:72px; width:min(230px,56vw); max-width:none; }
+    body.pv-gear #mapbox { display:none; } body.pv-map #gear { display:none; } body.pv-map #mapbox { display:block; width:50vw; }
+    /* full screen */
+    body.pvf.pv-stat #stat { left:8px; right:8px; top:72px; bottom:8px; width:auto; z-index:6; overflow:auto; padding:12px 14px; }
+    body.pvf.pv-stat #stat .skulls img { width:30px; height:30px; } body.pvf.pv-stat #stat .bar.big { height:30px; } body.pvf.pv-stat #stat .bar.big span { font-size:16px; line-height:30px; }
+    body.pvf.pv-stat #stat .kv { font-size:15px; } body.pvf.pv-stat #stat .kv b { font-size:19px; } body.pvf.pv-stat #stat .call { font-size:15px; }
+    body.pvf.pv-gear #side, body.pvf.pv-map #side { left:8px; right:8px; top:72px; bottom:8px; width:auto; z-index:6; }
+    body.pvf.pv-gear #gear { width:auto; flex:1; max-width:none; overflow:auto; padding:12px 14px; } body.pvf #gear:not(.min) { width:auto; max-width:none; }
+    body.pvf #gear h4 { font-size:18px; } body.pvf #gear h4 span { font-size:16px; } body.pvf .ggrid { gap:10px; } body.pvf #gearInfo { font-size:16px; min-height:60px; margin-top:12px; }
+    body.pvf.pv-map #mapbox { width:auto; flex:1; display:flex; padding:8px; } body.pvf.pv-map #mini { width:100%; height:100%; }
+    #gear.min .body { display:block; }
+  }
   #awaken { background:radial-gradient(#2a1a00ee,#000d 70%); z-index:30; overflow:hidden; cursor:pointer; }
   #awaken .rays { position:absolute; left:50%; top:50%; width:170vmax; height:170vmax; margin:-85vmax 0 0 -85vmax; background:repeating-conic-gradient(#ffd23a33 0 6deg,transparent 6deg 18deg); animation:awSpin 18s linear infinite, awFade 1.6s ease-out both; border-radius:50%; -webkit-mask:radial-gradient(circle,#000 0,transparent 60%); mask:radial-gradient(circle,#000 0,transparent 60%); }
   #awaken .ring { position:absolute; left:50%; top:50%; width:80px; height:80px; margin:-40px 0 0 -40px; border:4px solid #ffe27a; border-radius:50%; opacity:0; animation:awRing 2.4s ease-out infinite; box-shadow:0 0 30px #ffd23a, inset 0 0 30px #ffd23a; }
@@ -184,6 +211,9 @@
 <body>
 <canvas id="c"></canvas>
 <div id="stat" class="ui panel"></div>
+<button id="bStat" class="ui rbtn" aria-label="Character, tap to open and tap again for full screen"><span id="bStatIn">1</span></button>
+<div id="bBars" class="ui"><i class="hpb"><b id="bHpB"></b></i><i class="mpb"><b id="bMpB"></b></i></div>
+<div id="rbtns" class="ui"><button id="bGear" class="rbtn" aria-label="Gear, tap to open and tap again for full screen"><svg viewBox="0 0 48 48" width="34" height="34"><path d="M9 6l4-2 22 24-3 3z" fill="#cfd8e0" stroke="#223" stroke-width="1.6" stroke-linejoin="round"/><path d="M33 29l5 5-3 3-5-5z" fill="#8a5a2a" stroke="#223" stroke-width="1.4"/><path d="M26 25l-2 6 3 1 4-3z" fill="#e0b040" stroke="#223" stroke-width="1.2"/><path d="M26 18h20v12c0 8-6 13-10 15-4-2-10-7-10-15z" fill="#3a78e0" stroke="#10204a" stroke-width="2" stroke-linejoin="round"/><path d="M36 20v22c3-2 8-6 8-12V20z" fill="#2a5cc0"/><path d="M36 22v8M32 26h8" stroke="#ffe14a" stroke-width="2.4" stroke-linecap="round"/></svg></button><button id="bMap" class="rbtn" aria-label="Map, tap to open and tap again for full screen"><svg viewBox="0 0 48 48" width="34" height="34"><path d="M24 3l18 10.5v21L24 45 6 34.5v-21z" fill="#2a1a4a" stroke="#0a0614" stroke-width="2" stroke-linejoin="round"/><path d="M24 3l18 10.5L24 24z" fill="#5ad87a"/><path d="M42 13.5v21L24 24z" fill="#4aa8ff"/><path d="M24 45L6 34.5 24 24l18 10.5z" fill="#c24bff"/><path d="M6 13.5L24 3v21L6 34.5z" fill="#ffd23a"/><path d="M24 3l18 10.5v21L24 45 6 34.5v-21z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" opacity=".85"/><circle cx="24" cy="24" r="4.2" fill="#fff" stroke="#10101a" stroke-width="1.6"/></svg></button></div>
 <div id="side" class="ui"><div id="gear" class="panel"></div><div id="mapbox" class="panel"><canvas id="mini" width="232" height="150"></canvas></div></div>
 <div id="zoomBtns" class="ui"><button id="zIn" aria-label="Zoom in">+</button><button id="zCtr" aria-label="Reset view">&#9678;</button><button id="zOut" aria-label="Zoom out">&minus;</button></div>
 <div id="tip" class="ui"><span id="tipText"></span></div>
@@ -680,7 +710,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 62;
+  const BUILD = 63;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1684,6 +1714,12 @@
   function threat(m) {
     const turns = Math.ceil(m.hp / Math.max(1, pAtk() - m.def * .5));
     return turns * Math.max(1, m.atk - pDef() * .5) / Math.max(1, P.hp);
+  }
+  // the harder the matchup, the redder and bigger the monster's level number
+  function threatLook(m) {
+    const r = Math.max(0, Math.min(1.4, threat(m))), k = Math.min(1, r / 1.1);
+    const g = Math.round(224 - 190 * k), b = Math.round(224 - 200 * k);   // grey-white -> deep red
+    return { col: 'rgb(255,' + g + ',' + b + ')', sc: 1 + 1.1 * k, px: Math.round(13 + 15 * k), k };
   }
   const threatWord = (m) => { const r = threat(m); return r < .25 ? 'weak' : r < .6 ? 'a fair fight' : r < 1 ? 'dangerous' : 'deadly'; };
   function blog(s) { B.log.push(s); if (B.log.length > 5) B.log.shift(); }
@@ -3018,7 +3054,7 @@
     if (m.iced && m.iced > gt && L) lpFeet(silOf(L, 'ice'), cx, cy - hop, guy.x > m.x, 1, 1, .45);
     else if (m.iced && m.iced > gt) { G.globalAlpha = .4; G.fillStyle = '#9fe8ff'; G.fillRect(Math.round(cx - c.width * ms / 2), Math.round(cy - c.height * ms - hop), c.width * ms, c.height * ms); G.globalAlpha = 1; }
     if (m.hp < m.maxHp) { px(cx - 8, cy + 4, 16, 3, '#000'); px(cx - 7, cy + 5, Math.max(1, Math.round(14 * m.hp / m.maxHp)), 1, '#ff4a4a'); }
-    text(String(m.L), cx + Math.ceil(c.width * ms / 2) + 2, cy - c.height * ms + 2 - hop, m.elite || m.boss ? '#ffe14a' : '#d0d0d0');
+    { const th = threatLook(m); text(String(m.L), cx + Math.ceil(c.width * ms / 2) + 2, cy - c.height * ms + 2 - hop - (th.sc - 1) * 3, th.col, th.sc); }
   }
   function drawPet(ox, oy) {
     const t = tiles.get(key(pet.q, pet.r)), bob = t ? bobA(t) - elev(t) : 0, w = toWorld(pet.q, pet.r);
@@ -3386,6 +3422,8 @@
     st += '<button class="hallbtn" id="hallBtn">&#127942; Hall of Greats</button><button class="hallbtn" id="menuBtn" style="margin-top:4px;border-color:#5ab0ff;color:#bfe0ff">&#9776; Menu</button>';
     $('stat').innerHTML = st;
     $('skillBtn').classList.toggle('glow', P.sp > 0);
+    { const hpp = Math.max(0, Math.min(100, Math.round(100 * P.hp / mh))); $('bStat').style.setProperty('--hp', hpp); $('bStatIn').textContent = P.lvl; $('bStat').classList.toggle('sp', P.sp > 0);
+      $('bHpB').style.width = hpp + '%'; $('bMpB').style.width = Math.max(0, Math.min(100, Math.round(100 * P.mp / mm))) + '%'; }
     let g = '<h4 id="gearT">GEAR<span>ATK ' + pAtk() + ' · DEF ' + pDef() + '</span></h4><div class="body"><div class="ggrid">';
     for (const [sl, label] of SLOTS) { const it = P.eq[sl]; g += '<div class="gs' + (it ? '' : ' empty') + '" data-g="' + sl + '" title="' + (it ? it.name + ': ' + gearDesc(it) : label + ': empty') + '">' + (it ? img(gearIconURL(it)) : '<span>' + label + '</span>') + '</div>'; }
     $('gear').innerHTML = g + '</div><div id="gearInfo">' + gearInfoHTML() + '</div></div>';
@@ -3403,8 +3441,20 @@
     { const ah = A.map((a, i) => '<button class="act' + (a.off ? ' off' : '') + (a.buy ? ' buy' : '') + (a.hot ? ' hot' : '') + '" data-a="' + i + '">' + a.label + (a.better ? ' &#9650;' : '') + '<small>' + (a.off || a.sub) + '</small></button>').join(''); if (renderHud.actH !== ah) { renderHud.actH = ah; $('actions').innerHTML = ah; } }
     if (stashOpen) renderStash();
   }
+  // phone panels: tap a round button for a small window, tap again for full screen, tap a third time to close
+  const isPhone = () => !TEST && window.matchMedia('(max-width:760px)').matches;
+  let pvOpen = null, pvFull = false;
+  function setPV(name) {
+    if (pvOpen === name) { if (!pvFull) pvFull = true; else { pvOpen = null; pvFull = false; } } else { pvOpen = name; pvFull = false; }
+    const b = document.body.classList; b.remove('pv-stat', 'pv-gear', 'pv-map', 'pvf'); if (pvOpen) b.add('pv-' + pvOpen); if (pvFull) b.add('pvf');
+    $('stat').classList.toggle('min', !!pvOpen && !pvFull);   // small window = compact view, full screen = everything
+    for (const [id, nm] of [['bStat', 'stat'], ['bGear', 'gear'], ['bMap', 'map']]) $(id).classList.toggle('on', pvOpen === nm);
+    miniT = 9; hudDirty = true;
+  }
   function drawMini() {
     const c = $('mini'); if (!c || !c.offsetParent) return;
+    if (isPhone() && pvFull && pvOpen === 'map') { const nw = Math.max(120, Math.floor(c.clientWidth / 3)), nh = Math.max(120, Math.floor(c.clientHeight / 3)); if (c.width !== nw || c.height !== nh) { c.width = nw; c.height = nh; } }
+    else if (c.width !== 232 || c.height !== 150) { c.width = 232; c.height = 150; }
     const g = c.getContext('2d'), w = c.width, h = c.height, k = 9 / (R * 1.5), ox = w / 2, oy = h / 2;
     g.fillStyle = S.cave ? '#040306' : '#05070c'; g.fillRect(0, 0, w, h);
     for (const t of tiles.values()) {
@@ -3423,13 +3473,14 @@
     $('actions').onclick = (e) => { if (warpMode) return; const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
+    $('bStat').onclick = () => setPV('stat'); $('bGear').onclick = () => setPV('gear'); $('bMap').onclick = () => setPV('map');
     $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); else if (e.target.closest('#menuBtn')) openMenu('pause');
-      else if (e.target.closest('.hdr, .bar, .kv, .minline')) { $('stat').classList.toggle('min'); try { localStorage.setItem('hexstatmin', $('stat').classList.contains('min') ? '1' : '0'); } catch (_) {} } };
+      else if (!isPhone() && e.target.closest('.hdr, .bar, .kv, .minline')) { $('stat').classList.toggle('min'); try { localStorage.setItem('hexstatmin', $('stat').classList.contains('min') ? '1' : '0'); } catch (_) {} } };
     $('skillBtn').onclick = () => { if (B || S.state !== 'play') return; openSkills(); };
     $('bookBtn').onclick = () => { if (B || S.state !== 'play') return; openBook(); };
     $('spells').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) selectSpell(b.dataset.k); };
     $('gear').onmouseover = (e) => { const c = e.target.closest('[data-g]'), v = c ? c.dataset.g : null; if (v !== gearHover) { gearHover = v; const gi = $('gearInfo'); if (gi) gi.innerHTML = gearInfoHTML(); } };
-    $('gear').onclick = (e) => { if (e.target.closest('#gearT')) $('gear').classList.toggle('min'); };
+    $('gear').onclick = (e) => { if (!isPhone() && e.target.closest('#gearT')) $('gear').classList.toggle('min'); };
   }
 
   let stSel = null, stQty = 1;
@@ -4693,7 +4744,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   function renderBattle() {
     if (TEST || !B) return;
     const m = B.m, mh = maxHP(), mm = maxMP();
-    $('bMname').textContent = m.name + ' · Lv ' + m.L; $('bPlv').textContent = '· Lv ' + P.lvl;
+    { const th = threatLook(m), nm = $('bMname'); nm.textContent = m.name + ' · Lv '; const sp = document.createElement('span'); sp.textContent = m.L; sp.style.cssText = 'color:' + th.col + ';font-size:' + th.px + 'px;font-weight:900;text-shadow:0 0 ' + Math.round(th.k * 8) + 'px ' + th.col; nm.appendChild(sp); } $('bPlv').textContent = '· Lv ' + P.lvl;
     $('bMinfo').textContent = (m.trait ? 'It ' + TRAITS[m.trait] : '') + (B.frozen ? ' · frozen' : '') + (B.charging ? ' · WINDING UP!' : '');
     $('bPhp').style.width = pct(P.hp, mh); $('bPhpT').textContent = 'HP ' + P.hp + ' / ' + mh;
     $('bPmp').style.width = pct(P.mp, mm); $('bPmpT').textContent = 'MP ' + P.mp + ' / ' + mm;
@@ -4849,7 +4900,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   loadSaved().then(found => { if (!found) startOnline(); });
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
-  try { if (!TEST && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
+  try { if (!TEST && !window.matchMedia('(max-width:760px)').matches && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
   window.__g3 = { hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
