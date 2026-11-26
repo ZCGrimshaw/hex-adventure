@@ -301,6 +301,7 @@
     smoke:   { name: 'Smoke bomb', d: 'Battle: vanish from any fight except a boss' },
     stew:    { name: 'Hearty stew', d: 'Eat: restores most of your health and some magic' },
     bow:     { name: 'Bow', d: 'Shoot arrows at monsters up to 4 hexes away (click it in your bag)' },
+    seestone: { name: 'Seeing stone', d: 'Throw it up to 3 hexes: it reveals the hexes around where it lands' },
     arrow:   { name: 'Arrows', d: 'Ammunition for a bow (kept in your quiver, not your bag)' },
     farrow:  { name: 'Fire arrows', d: 'Arrows that burn: great against monsters in trees' },
     iarrow:  { name: 'Ice arrows', d: 'Arrows that freeze a monster in place for a while' },
@@ -323,6 +324,7 @@
     bridge:  { name: 'Bridge', d: 'Spans a chasm. Use it next to one', size: 2 },
     pack:    { name: 'Pack upgrade', d: 'Use: +1 bag slot for good (max 12)' },
   };
+  const SEE_AT = 301, SEE_R = 3;   // seeing stones unlock at tile 301 and can be thrown 3 hexes
   const RECIPES = [
     // basics are always open (the boss gates and first puzzles need them); the rest unlock with Artisan / Alchemy skill ranks
     { id: 'rope', needs: { vine: 2 } },
@@ -341,6 +343,7 @@
     { id: 'stew', needs: { cooked: 1, meat: 1, berries: 1 }, skill: ['alchemy', 2] },
     { id: 'crbomb', needs: { crystal: 2, bomb: 1 }, skill: ['artisan', 2] },
     { id: 'bow', needs: { wood: 2, rope: 1 } },
+    { id: 'seestone', needs: { crystal: 1, stone: 1 }, tiles: SEE_AT },
     { id: 'arrow', needs: { wood: 1, flint: 1 }, n: 5 },
     { id: 'farrow', needs: { arrow: 3, flint: 1 }, n: 3, skill: ['fletch', 1] },
     { id: 'iarrow', needs: { arrow: 3, crystal: 1 }, n: 3, skill: ['fletch', 2] },
@@ -350,7 +353,7 @@
   const AMMO = { arrow: 1, farrow: 1, iarrow: 1, parrow: 1 };
   const ammo = (k) => (P.ammo && P.ammo[k]) || 0;
   const CRAFTTABS = [['all', 'All'], ['wood', 'Wood'], ['vine', 'Rope & vine'], ['mine', 'Stone & iron'], ['crystal', 'Crystal'], ['food', 'Food & water'], ['hide', 'Hide']];
-  const CRAFTMATS = { arrow: 'wood', shroom: 'food', cooked: 'food', meat: 'food', bomb: 'mine', wood: 'wood', rope: 'vine', vine: 'vine', stone: 'mine', iron: 'mine', flint: 'mine', crystal: 'crystal', berries: 'food', water: 'food', hide: 'hide' };
+  const CRAFTMATS = { seestone: 'crystal', arrow: 'wood', shroom: 'food', cooked: 'food', meat: 'food', bomb: 'mine', wood: 'wood', rope: 'vine', vine: 'vine', stone: 'mine', iron: 'mine', flint: 'mine', crystal: 'crystal', berries: 'food', water: 'food', hide: 'hide' };
   const recipeTabs = (r) => { const t = new Set(); for (const k in r.needs) if (CRAFTMATS[k]) t.add(CRAFTMATS[k]); return t; };
   const SPELLS = {
     fire:  { name: 'Fireball', cost: 4, d: 0,  desc: 'ignores armor' },
@@ -441,6 +444,7 @@
     flint: [["..........","....k.....","...kKk....","...kKkk...","..kKkkk...","..kkkkkk..",".kkKkkkk..",".kkkkkkkk."], { k: '#2a2240', K: '#a89ae8' }],
     iron: [["..........","...ssss...","..sossos..",".ssssosss.",".sossssos.",".ssssosss.","..ssossk..","...ssss..."], { s: '#7a7068', o: '#e8903a', k: '#4a443e' }],
     crystal: [["....c.....","...cCc....","...cCc..c.","..ccCcc.cC","..cCccc.cc","..ccccc.cc","..ccccc...","...ccc...."], { c: '#3ac8e0', C: '#e0ffff' }],
+    seestone: [["...pppp...","..pPPPPp..",".pPwwPPPp.",".pPwePPPp.",".pPPPeePp.",".pPPPPPPp.","..pPPPPp..","...pppp..."], { p: '#4a2a9a', P: '#9a6aff', w: '#ffffff', e: '#e8d8ff' }],
     torch: [["....y.....","...yfy....","...fyf....","...fff....","....w.....","....w.....","....w.....","....w.....","....w....."], { w: '#8a5a2a', f: '#ff6a1a', y: '#ffe14a' }],
     pickaxe: [["..sss.....",".s...ss...","......ws..",".....w..s.","....w....s","...w......","..w.......",".w........","w........."], { s: '#c8d0d8', w: '#8a5a2a' }],
     ladder: [[".w....w...",".wwwwww...",".w....w...",".w....w...",".wwwwww...",".w....w...",".w....w...",".wwwwww...",".w....w..."], { w: '#b07840' }],
@@ -712,7 +716,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 70;
+  const BUILD = 71;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1006,6 +1010,7 @@
     const t = genTile(q, r);
     tiles.set(key(q, r), t); S.revealed++;
     if (S.revealed % 100 === 0 && S.revealed / 100 > (S.miles || 0)) { S.miles = S.revealed / 100; if (S.miles <= 5) showBanner('MILESTONE: ' + S.revealed + ' TILES', 'Gear can now be reforged, sharpened and plated up to +' + upCap()); }
+    if (S.revealed === SEE_AT) { showBanner('UNLOCKED: SEEING STONES', 'Craft them from a crystal and a stone, then throw one up to ' + SEE_R + ' hexes to reveal the hexes around it'); toast('Seeing stones unlocked! Craft one (a crystal and a stone) and throw it to reveal hexes'); }
     if (S.rules === 2 && (S.revealed === 100 || S.revealed === 200)) { const n = skullCap(); later(() => toast('You earned an extra skull! You can now fall ' + n + ' times before the run ends'), 600); hudDirty = true; }
     if (S.revealed % 2 === 0) P.mp = Math.min(maxMP(), P.mp + 1 + sk('flow'));
     stats.far = Math.max(stats.far, hd(q, r));
@@ -1433,7 +1438,7 @@
     tidyLoadout();
     for (const k of SP_ORDER) if (P.spells[k] && P.loadout.length < spellSlots() && P.loadout.indexOf(k) < 0) P.loadout.push(k);
   }
-  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f', charm: '#ff7ac8', 'a:arrow': '#f0e0c0', 'a:farrow': '#ff8a2a', 'a:iarrow': '#8ae0ff', 'a:parrow': '#9aff5a' };
+  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f', charm: '#ff7ac8', 'i:seestone': '#b48aff', 'a:arrow': '#f0e0c0', 'a:farrow': '#ff8a2a', 'a:iarrow': '#8ae0ff', 'a:parrow': '#9aff5a' };
   const SPHELP = { fire: 'On the map: hit a monster, melt ice, light braziers and dark caves, set trees alight. Range 3',
     frost: 'On the map: hit and freeze a monster, put out fires, freeze a lake solid to walk on. Range 3',
     bolt: 'On the map: heavy damage to a monster, shatter boulders. Range 3', drain: 'On the map: hit a monster and heal yourself. Range 3', heal: 'Heal yourself right now',
@@ -1443,7 +1448,7 @@
   function freezeLake(t) { t.type = 'lakeice'; stats.puzzles++; const g = ri(4, 9) + Math.floor(curD() / 6); P.gold += gm(g); stats.gold += g; if (rnd() < .5) t.loot.push({ kind: 'item', id: 'crystal' }); toast('The lake freezes solid. You can walk across it now! (+' + g + ' gold found in the ice)'); }
   // ---------- bow and arrows: shoot a monster from a distance; a hit monster may come for you ----------
   const BOWR = 4;
-  const aimRange = () => aim && aim.startsWith('a:') ? BOWR : spellRange();
+  const aimRange = () => aim && aim.startsWith('a:') ? BOWR : aim && aim.startsWith('i:') ? SEE_R : spellRange();
   function arrowUse(k, t) {
     if (!t) return { why: 'Pick a monster' };
     if (hd(t.q - guy.q, t.r - guy.r) > BOWR) return { why: 'Too far for your bow (range ' + BOWR + ')' };
@@ -1480,6 +1485,7 @@
   }
   function spellUse(k, t) {
     if (k.startsWith('a:')) return arrowUse(k.slice(2), t);
+    if (k.startsWith('i:')) return seeUse(t);
     if (!t) return { why: 'Pick a revealed tile' };
     if (hd(t.q - guy.q, t.r - guy.r) > spellRange()) return { why: 'Too far away (range ' + spellRange() + ')' };
     const m = monAt(t.q, t.r);
@@ -1573,8 +1579,35 @@
     aim = aim === k ? null : k; bagSel = null; hudDirty = true;
     if (aim) toast(SPELLS[k].name + ': click a highlighted target. Right-click or Esc to cancel');
   }
+  // ---------- seeing stone: thrown onto a revealed hex, it lights up the hexes around it. Every hex still follows the normal reveal rules (sealed hexes, the boss mist) ----------
+  const seeRing = (t) => [[t.q, t.r], ...DIRS.map(([a, b]) => [t.q + a, t.r + b])];
+  function seeUse(t) {
+    if (!t) return { why: 'Pick a revealed hex to throw the stone onto' };
+    if (S.revealed < SEE_AT) return { why: 'Seeing stones unlock at tile ' + SEE_AT };
+    if (S.cave) return { why: 'The stone is dull inside a cave' };
+    if (hd(t.q - guy.q, t.r - guy.r) > SEE_R) return { why: 'Too far to throw (range ' + SEE_R + ')' };
+    if (mistCap()) return { why: 'A dark mist blocks the way. Defeat ' + S.boss.m.name + ' to push further' };
+    if (!seeRing(t).some(([a, b]) => isCand(a, b))) return { why: 'Nothing there to reveal: it is already seen, or sealed off' };
+    return { fn: () => seeReveal(t) };
+  }
+  function seeReveal(t) {
+    let n = 0; const ring = seeRing(t).sort((x, y) => hd(x[0] - guy.q, x[1] - guy.r) - hd(y[0] - guy.q, y[1] - guy.r));
+    for (let pass = 0; pass < 3; pass++) { let got = 0; for (const [a, b] of ring) if (!tiles.has(key(a, b)) && !mistCap() && isCand(a, b) && reveal(a, b, true)) { got++; n++; } if (!got) break; }
+    const w = toWorld(t.q, t.r); burst(w.x, w.y - 10, 26, ['#b48aff', '#ffffff', '#e8d8ff'], 60, -25); glow(w.x, w.y - 10, 60, '#b48aff', .5);
+    if (n) { ensureFrontier(); toast('The seeing stone lights up ' + n + ' hex' + (n > 1 ? 'es' : '')); } else toast('The stone glows, but the hexes around it stay hidden');
+    hudDirty = true;
+  }
+  function throwSee(t) {
+    const u = seeUse(t); if (!u.fn) { toast(u.why); return; }
+    const i = P.bag.indexOf('seestone'); if (i < 0) { aim = null; hudDirty = true; return; }
+    P.bag.splice(i, 1); stats.items++; aim = null; hudDirty = true;
+    const a = toWorld(guy.q, guy.r), b = toWorld(t.q, t.r);
+    mapFx.push({ k: 'seestone', x0: a.x, y0: a.y - 14 - elev(curTile()), x1: b.x, y1: b.y - 10 - elev(t), t0: gt, dur: .4 });
+    later(() => { if (S.state !== 'play') return; u.fn(); hudDirty = true; }, 400);
+  }
   function castAt(k, t) {
     if (k.startsWith('a:')) return shootAt(k.slice(2), t);
+    if (k.startsWith('i:')) return throwSee(t);
     const sp = SPELLS[k]; if (P.mp < sp.cost) { toast('Not enough magic'); aim = null; hudDirty = true; return; }
     const u = spellUse(k, t); if (!u.fn) { toast(u.why); return; }
     P.mp -= sp.cost; stats.spells++; aim = null; hudDirty = true;
@@ -1586,7 +1619,7 @@
   // ---------- crafting ----------
   const recipeKnown = (r) => P.known[r.id] || Object.keys(r.needs).every(k => P.seen[k]);
   const recipeHinted = (r) => recipeKnown(r) || Object.keys(r.needs).some(k => P.seen[k]);
-  const recipeLock = (r) => r.skill && sk(r.skill[0]) < r.skill[1] ? SKILLS.find(x => x.id === r.skill[0]).name + ' skill rank ' + r.skill[1] : '';
+  const recipeLock = (r) => r.tiles && S.revealed < r.tiles ? 'tile ' + r.tiles + ' (you are at ' + S.revealed + ')' : r.skill && sk(r.skill[0]) < r.skill[1] ? SKILLS.find(x => x.id === r.skill[0]).name + ' skill rank ' + r.skill[1] : '';
   const stashReach = () => atShrine() || unlocked('stashcraft');   // 25 gems: craft from your stash anywhere
   const have = (k, withS) => AMMO[k] ? ammo(k) : countOf(k, withS);
   function craftCheck(r) {
@@ -1667,6 +1700,7 @@
     if (id === 'rebirth') O.push({ label: 'Use: drink the Draught of Rebirth', sub: 'refund every skill point in your tree', better: !respecBlock(), off: respecBlock(), run() { spend(); respecSkills(); toast('Your skills dissolve and all your points return (press K)'); } });
     if (id === 'bow') { const A2 = [['arrow', 'an arrow'], ['farrow', 'a fire arrow'], ['iarrow', 'an ice arrow'], ['parrow', 'a poison arrow']];
       for (const [k, nm] of A2) if (ammo(k) || k === 'arrow') O.push({ label: 'Shoot ' + nm, sub: ammo(k) + ' in your quiver · range ' + BOWR, better: ammo(k) > 0, off: !ammo(k) ? 'No ' + ITEMS[k].name.toLowerCase() + ': craft them (wood + flint makes 5)' : atShrine() && 'You cannot shoot from a shrine', run() { aim = 'a:' + k; hudDirty = true; toast('Aim: click a monster within ' + BOWR + ' hexes. Right-click or Esc to cancel'); } }); }
+    if (id === 'seestone') O.push({ label: 'Throw seeing stone', sub: 'lights up the hexes around where it lands · range ' + SEE_R, better: true, off: S.revealed < SEE_AT ? 'Unlocks at tile ' + SEE_AT : S.cave ? 'The stone is dull inside a cave' : mistCap() && 'The dark mist blocks it', run() { aim = 'i:seestone'; hudDirty = true; toast('Aim: click a revealed hex within ' + SEE_R + '. Right-click or Esc to cancel'); } });
     if (id === 'torch' || id === 'ttorch') { const c = near('cave');
       O.push({ label: 'Use: light the cave', sub: 'the torch is used up', better: !!c, off: !c && 'Stand next to a dark cave', run() { spend(); lightCave(c); } }); }
     if (id === 'pickaxe') { const b = near('boulder');
@@ -3265,11 +3299,11 @@
       if (m) s = m.name + ' Lv ' + m.L + ' · looks ' + threatWord(m) + (m.trait ? ' · ' + TRAITS[m.trait] : '') + (m.roam ? ' · hunter' : '') + (m.heldXp ? ' · holds your XP' : '');
       else if (hoverT.grave) s = 'Your grave: walk here to recover your things';
       else if (hoverT.loot.length) s += ' · ' + hoverT.loot.map(i => i.kind === 'gear' ? i.name : ITEMS[i.id].name).slice(0, 3).join(', ');
-      if (aim) { const u = spellUse(aim, hoverT); s = u.fn ? (aim.startsWith('a:') ? 'Shoot ' + ITEMS[aim.slice(2)].name.toLowerCase() + ' here' : 'Cast ' + SPELLS[aim].name + ' here') + (sel ? ' · tap again to confirm' : '') : u.why; }
+      if (aim) { const u = spellUse(aim, hoverT); s = u.fn ? (aim.startsWith('a:') ? 'Shoot ' + ITEMS[aim.slice(2)].name.toLowerCase() + ' here' : aim.startsWith('i:') ? 'Throw the seeing stone here' : 'Cast ' + SPELLS[aim].name + ' here') + (sel ? ' · tap again to confirm' : '') : u.why; }
       else if (sel) s += ' · tap again to go';
       setTip(s);
     } else if (warpMode) { const c = mouse.x > -900 ? cellAtMouse() : null, e = c && warpMode.list.find(x => x.t.q === c.q && x.t.r === c.r); setTip(e ? 'Click to warp here · ' + e.d + ' tiles away' : 'Choose a glowing shrine (Esc to cancel)'); }
-    else if (aim) setTip('Choose a highlighted target for ' + (aim.startsWith('a:') ? ITEMS[aim.slice(2)].name.toLowerCase() : SPELLS[aim].name) + ' (Esc to cancel)');
+    else if (aim) setTip('Choose a highlighted target for ' + (aim.startsWith('a:') || aim.startsWith('i:') ? ITEMS[aim.slice(2)].name.toLowerCase() : SPELLS[aim].name) + ' (Esc to cancel)');
     else if (hoverC) setTip(mistCap() ? 'Dark mist: defeat ' + S.boss.m.name + ' to explore further' : hd(hoverC.q - guy.q, hoverC.r - guy.r) === 1 ? (sel ? 'Tap again to reveal' : 'Click to reveal') : (sel ? 'Tap again to walk there and reveal' : 'Click to walk there and reveal')); else setTip('');
 
     const list = [];
@@ -3324,6 +3358,7 @@
         line(x - ux * 9 + ox, y - uy * 9 + oy, x + ox, y + oy, '#c8a060'); px(x + ox - 1, y + oy - 1, 3, 3, { arrow: '#e8e8f0', farrow: '#ff8a2a', iarrow: '#8ae0ff', parrow: '#9aff5a' }[f.ak]);
         if (f.ak !== 'arrow') glow(x + ox, y + oy, 12, { farrow: '#ff8a2a', iarrow: '#8ae0ff', parrow: '#9aff5a' }[f.ak], .6); }
       else if (f.k === 'bolt') { if (p > .3) { let x = f.x1, y = f.y1 - 140; for (let i = 0; i < 12; i++) { const nx = f.x1 + (hash(i + Math.floor(gt * 40)) - .5) * 14, ny = y + 12; line(x + ox, y + oy, nx + ox, ny + oy, i % 2 ? '#ffffff' : '#ffe14a'); x = nx; y = ny; } glow(f.x1 + ox, f.y1 + oy, 40, '#ffe14a', .7); } }
+      else if (f.k === 'seestone') { const x = f.x0 + (f.x1 - f.x0) * p, y = f.y0 + (f.y1 - f.y0) * p - Math.sin(p * Math.PI) * 26; px(x + ox - 2, y + oy - 2, 5, 5, '#9a6aff'); px(x + ox - 1, y + oy - 1, 3, 3, '#ffffff'); glow(x + ox, y + oy, 16, '#b48aff', .7); }
       else if (f.k === 'drain') { for (let i = 0; i < 6; i++) { const q = clamp(p - i * .08, 0, 1), x = f.x1 + (f.x0 - f.x1) * q, y = f.y1 + (f.y0 - f.y1) * q - Math.sin(q * Math.PI) * 16; px(x + ox - 1, y + oy - 1, 3, 3, i % 2 ? '#e0b0ff' : '#a050e0'); } }
       else { const x = f.x0 + (f.x1 - f.x0) * p, y = f.y0 + (f.y1 - f.y0) * p - Math.sin(p * Math.PI) * 18, cols = f.k === 'fire' ? FIRE : ['#5ab0e0', '#8ae0ff', '#ffffff'];
         for (let i = 4; i >= 0; i--) { const tq = clamp(p - i * .05, 0, 1), tx = f.x0 + (f.x1 - f.x0) * tq, ty = f.y0 + (f.y1 - f.y0) * tq - Math.sin(tq * Math.PI) * 18; px(tx + ox - 1, ty + oy - 1, 3 - Math.floor(i / 2), 3 - Math.floor(i / 2), cols[Math.min(2, Math.floor(i / 2))]); }
@@ -4987,7 +5022,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   setTimeout(checkUpdate, 8000);
   if (window.innerWidth < 760 && !TEST) $('gear').classList.add('min');
   try { if (!TEST && !window.matchMedia('(max-width:760px)').matches && localStorage.getItem('hexstatmin') === '1') $('stat').classList.add('min'); } catch (_) {}
-  window.__g3 = { dirty() { hudDirty = true; }, startBattle, bAct, makeMonster, placeMon, charmChance, charmMon, get charm() { return P.charm; }, hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
+  window.__g3 = { castAt, aimSet(k) { aim = k; }, dirty() { hudDirty = true; }, startBattle, bAct, makeMonster, placeMon, charmChance, charmMon, get charm() { return P.charm; }, hallTable, skullCap, die, chestAge, openChest, get stats() { return stats; }, get mons() { return mons; }, Mus, musWant, get S() { return S; }, get P() { return P; }, get guy() { return guy; }, get tiles() { return tiles; }, get mons() { return mons; }, get B() { return B; }, get pet() { return pet; }, get stats() { return stats; },
     zoomBy, zoomReset, tapAt, get scale() { return scale; }, get sel() { return sel; }, set sel(v) { sel = v; }, pan, reveal, isCand, approach, walkInstant, actionsFor, useItem, itemOptions, bAct, threat, maxHP, maxMP, gpower, monAt, newGame, roamTick, fireTick, DIRS, askHire, makeHireling, castAt, selectSpell, befriend, petHunger, eatNow, autoEquip, itemOptions, artLost, craft, craftCheck, RECIPES, shootAt, arrowUse, sealedBy, smithCost, upCap, actionsFor, heroLP, heroSpec, lpRender, markHud: () => { hudDirty = true; }, markLock: () => { lockDirty = true; }, warmScan, WARM, TEX, MON, BOSSES, monBuildG, get bM() { return bM; }, get lockLvl() { return lockLvl; }, nearBlock, makeGear, inspectGear, monLP, MSG, musSong, spellCombo, spellHitMon, nearSpecial, openMenu, gameOver, unlocked, checkUnlocks, UNLOCKS, addGems, hireBase, hireScore, openSmith, smithUp, smithItems, gainXp, craft, craftCheck, RECIPES, bagUsed,
     openStash, bagToStash, stashToBag, genTile, startBattle, makeMonster, placeMon, mistCap, openLair, enterCave, exitCave, gameOver, saveNow, loadSaved, rpc, PID, learnSkill, SKILLS, castAt, selectSpell, spellUse, makeBoss, BOSSES, awakenSigil, die, onEnter, askSpring, drinkSpring, setGt: (v) => { gt = v; } };
   requestAnimationFrame(frame);
