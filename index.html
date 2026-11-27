@@ -756,7 +756,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 84;
+  const BUILD = 85;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1368,7 +1368,7 @@
         else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
         else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
-    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
+    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal shard (' + cr + ' held, bag + stash)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal shard (the blue crystals, not space gems)', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') { if (S.realm) A.push({ label: 'Enter the Higher Realm', sub: S.caves && S.caves.realm ? 'explored ' + S.caves.realm.c.n + ' / ' + S.caves.realm.c.max + ' · every shrine leads here' : 'a pale realm above the shrine', hot: true, run() { enterCave(t, true); } });
       else A.push({ label: 'Set a shrine brick', sub: (S.sb || 0) + ' / 3 set on every shrine · ' + (P.sbrick || 0) + ' in your pouch', off: !(P.sbrick) && 'You need a shrine brick (1 in 7 bricks from blasted walls)', run() { setShrineBrick(t); } }); }

@@ -1,4 +1,4 @@
 {
-  "build": 84,
-  "notes": "You can drink an unused spring from the battle menu when fighting on its tile. Walls drop 1-2 bricks. Mythril Saber art fixed, and the reforge caption was removed from the gear compare."
+  "build": 85,
+  "notes": "Shrine warp now says it costs a crystal shard (not space gems) and that bag plus stash count."
 }
