@@ -1,4 +1,4 @@
 {
-  "build": 83,
-  "notes": "Gear compare now shows how many times a weapon was sharpened with stones and chest armor plated with iron."
+  "build": 84,
+  "notes": "You can drink an unused spring from the battle menu when fighting on its tile. Walls drop 1-2 bricks. Mythril Saber art fixed, and the reforge caption was removed from the gear compare."
 }

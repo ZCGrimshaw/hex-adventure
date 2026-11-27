@@ -756,7 +756,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 83;
+  const BUILD = 84;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1239,6 +1239,7 @@
   // healing spring: found by a ??? tile, asks before use, and can be revisited (one use only)
   let springOpen = false;
   const springHurt = () => P.hp < maxHP() || P.mp < maxMP() || (pet && pet.hp < pet.max);
+  const springHere = () => { const t = tiles.get(key(guy.q, guy.r)); return t && t.type === 'spring' && !t.dry ? t : null; };
   function drinkSpring(t) {
     if (!t || t.type !== 'spring' || t.dry) return;
     P.hp = maxHP(); P.mp = maxMP(); if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; t.dry = 1;
@@ -1747,7 +1748,7 @@
     if (id === 'bomb' || id === 'crbomb') {
       const w = near('wall');
       O.push({ label: 'Use: blow up wall', sub: 'opens the sealed hex', better: !!w, off: !w && 'Stand next to a rock wall (or save it for battle)', run() {
-        spend(); w.type = 'rubble'; stats.puzzles++; { const d = S.revealed, g = ri(8, 16) + Math.floor(d / 5); P.gold += gm(g); stats.gold += g; dropBricks(w, ri(3, 5)); w.loot.push(randItem(d)); if (rnd() < .45) w.loot.push(makeGear(d, 1)); }
+        spend(); w.type = 'rubble'; stats.puzzles++; { const d = S.revealed, g = ri(8, 16) + Math.floor(d / 5); P.gold += gm(g); stats.gold += g; dropBricks(w, ri(1, 2)); w.loot.push(randItem(d)); if (rnd() < .45) w.loot.push(makeGear(d, 1)); }
         const p = toWorld(w.q, w.r); burst(p.x, p.y - 6, 44, ['#ff9a2a', '#ffe14a', '#8892a0', '#ffffff'], 90, -40); flash = .5;
         toast('BOOM! The wall crumbles into bricks, with a stash of gold and treasure behind it!'); } });
     }
@@ -1954,7 +1955,8 @@
     } else if (type === 'item' && P.bag[arg] === 'smoke') {
       if (m.boss) return; P.bag.splice(arg, 1); stats.items++; stats.fled++; m.cool = gt + 8; blog('You vanish in a cloud of smoke!'); B.result = 'fled'; B.turn = 'done'; hudDirty = true;
       if (TEST) closeBattle(); else { renderBattle(); later(closeBattle, 600); } return;
-    } else if (type === 'item') { if (!battleUsable(P.bag[arg])) return; const msg = useItem(arg, true); if (!msg) return; blog(msg + '.'); }
+    } else if (type === 'spring') { const st = springHere(); if (!st) return; drinkSpring(st); blog('You drink from the spring: HP and MP fully restored!'); hudDirty = true; }
+    else if (type === 'item') { if (!battleUsable(P.bag[arg])) return; const msg = useItem(arg, true); if (!msg) return; blog(msg + '.'); }
     else if (type === 'run') {
       if (m.boss) return;
       const ch = clamp(50 + gsum('flee') + 10 * sk('flee') - (m.elite ? 15 : 0), 15, 95);
@@ -3347,8 +3349,8 @@
       } else {
         const tip = [0, 0, 20, 13, 8, 4, 3, 1][t], bw = [0, 0, 4, 4.6, 6, 5.4, 7.2, 6.4][t], gy = 45;
         fillS(() => { if (t === 5) { x.moveTo(32 - bw, gy); x.quadraticCurveTo(32 - bw, 20, 37, tip); x.quadraticCurveTo(32 + bw + 6, 20, 32 + bw, gy); } else { x.moveTo(32 - bw, gy); x.lineTo(32 - bw, tip + 9); x.lineTo(32, tip); x.lineTo(32 + bw, tip + 9); x.lineTo(32 + bw, gy); } x.closePath(); }, metal(32 - bw, 32 + bw));
-        if (t >= 3) line([[32, tip + 13], [32, gy - 3]], D1, 2, .8);
-        line([[32 - bw + 1.8, tip + 11], [32 - bw + 1.8, gy - 2]], '#ffffff', 1.5, .65);
+        if (t >= 3) line([[32, t === 5 ? 26 : tip + 13], [32, gy - 3]], D1, 2, .8);
+        line([[32 - bw + 1.8, t === 5 ? 29 : tip + 11], [32 - bw + 1.8, gy - 2]], '#ffffff', 1.5, .65);
         if (t === 6) { rune(32, 20, 3); rune(32, 30, 3); }
         // guard
         if (t <= 3) fillS(rr(32 - 9, gy, 18, 5, 2), lg(0, gy, 0, gy + 5, [L1, D1]), 2);
@@ -3880,7 +3882,7 @@
     inspList = list && list.length ? list : [g]; inspIdx = Math.max(0, inspList.indexOf(g));
     const ct = curTile(), inTile = ct && ct.loot.indexOf(g) >= 0, inBag = P.bag.indexOf(g) >= 0, canEq = (inTile || inBag) && !B && S.state === 'play' && !guy.mv;
     const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
-    const pips = (it) => { const cap = Math.max(upCap(), it.up || 0), u = it.up || 0; let s = ''; for (let i = 0; i < cap; i++) s += '<i class="pip' + (i < u ? ' on' : '') + '"></i>'; return '<div class="dim" style="font-size:10px;letter-spacing:1px;margin-top:4px">REFORGE SLOTS</div><div class="pips" title="Each gold diamond is a reforge already done; empty ones can still be reforged at a smith">' + s + '</div><div class="dim" style="font-size:11px">' + (u >= cap ? 'All ' + cap + ' used: fully reforged' : u + ' of ' + cap + ' used (gold = done) · ' + (cap - u) + ' more at a smith') + '</div>'; };
+    const pips = (it) => { const cap = Math.max(upCap(), it.up || 0), u = it.up || 0; let s = ''; for (let i = 0; i < cap; i++) s += '<i class="pip' + (i < u ? ' on' : '') + '"></i>'; return '<div class="dim" style="font-size:10px;letter-spacing:1px;margin-top:4px">REFORGE SLOTS</div><div class="pips" title="Each gold diamond is a reforge already done; empty ones can still be reforged at a smith">' + s + '</div>'; };
     const extra = (it) => { const cap = Math.max(upCap(), 0), one = (lab, n, what) => '<div class="dim" style="font-size:11px;margin-top:2px" title="' + what + '">' + lab + ' <b style="color:' + (n >= cap ? '#ffd23a' : '#cfe')+ '">' + n + ' / ' + cap + '</b></div>'; let h = ''; const sl = slotFor(it); if (sl === 'weapon') h += one('Sharpened with stones', it.sharp || 0, 'Use a stone from your bag on a weapon: +1 ATK each time'); if (sl === 'chest') h += one('Plated with iron', it.plate || 0, 'Use iron from your bag on chest armor: +1 DEF each time'); return h; };
     const card = (it, title) => '<div class="gc' + (it ? '' : ' none') + '"><div class="gt">' + title + '</div>' +
       (it ? '<div class="gi" style="border-color:' + it.col + ';box-shadow:0 0 12px ' + it.col + '66"><img src="' + gearIconURL(it) + '"></div><div class="gn" style="color:' + it.col + '">' + it.name + '</div><div class="dim" style="font-size:12px">' + (it.tier != null && typeof TIERN !== 'undefined' && TIERN[it.tier] ? TIERN[it.tier] + ' ' : '') + (SLOTS.find(x => x[0] === slotFor(it)) || ['', ''])[1] + '</div>' + pips(it) + extra(it) + '<div class="gd">' + gearDesc(it) + '</div>'
@@ -5272,7 +5274,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     else {
       const ch = clamp(50 + gsum('flee') + 10 * sk('flee') - (m.elite ? 15 : 0), 15, 95);
       h = btn('Attack', '', 'attack') + btn('Defend', P.eq.shield ? 'block 70%' : 'block 55%', 'defend') + btn('Magic', activeSpells().length ? '' : 'none equipped', 'menu', 'magic', !activeSpells().length) +
-        btn('Items', '', 'menu', 'items', !P.bag.some(battleUsable)) + (P.bag.includes('bow') ? btn('Shoot', ['arrow', 'farrow', 'iarrow', 'parrow'].reduce((s, k) => s + ammo(k), 0) + ' arrows', 'menu', 'bow', !['arrow', 'farrow', 'iarrow', 'parrow'].some(ammo)) : '') + (m.boss ? btn('Run', 'no escape!', 'run', '', true) : btn('Run', ch + '% chance', 'run'));
+        btn('Items', '', 'menu', 'items', !P.bag.some(battleUsable)) + (P.bag.includes('bow') ? btn('Shoot', ['arrow', 'farrow', 'iarrow', 'parrow'].reduce((s, k) => s + ammo(k), 0) + ' arrows', 'menu', 'bow', !['arrow', 'farrow', 'iarrow', 'parrow'].some(ammo)) : '') + (springHere() ? btn('Drink spring', 'full HP and MP, one use', 'spring') : '') + (m.boss ? btn('Run', 'no escape!', 'run', '', true) : btn('Run', ch + '% chance', 'run'));
     }
     $('bBtns').innerHTML = h; hudDirty = true;
   }
