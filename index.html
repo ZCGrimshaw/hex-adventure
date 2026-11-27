@@ -18,6 +18,7 @@
   canvas#c { display:block; touch-action:none; }
   .ui { position:fixed; font-weight:700; text-shadow:0 1px 0 #000; }
   .panel { background:linear-gradient(#17271dee,#0b140fee); border:2px solid #45624f; border-radius:7px; box-shadow:inset 0 0 0 1px #000, 0 3px 0 #0008; padding:8px 10px; }
+  img.sm { image-rendering:auto !important; }
   img.px, .slot img, #gear img, .rec img { image-rendering:pixelated; image-rendering:crisp-edges; }
   #stat { left:10px; top:10px; width:200px; }
   .skulls { display:flex; gap:3px; margin-bottom:4px; } .skulls img { width:22px; height:22px; }
@@ -55,11 +56,11 @@
   .slot img { width:32px; height:32px; flex:none; }
   .slot.empty { border-style:dashed; border-color:#2b3d31; background:#0a110d; cursor:default; }
   .slot.hold { border-color:#ff4a4a; box-shadow:0 0 8px #ff4a4a99, inset 0 0 0 1px #ff4a4a55; }
-  .gc { flex:1; min-width:150px; background:linear-gradient(#1c2c22,#0d1610); border:2px solid #4f6d5a; border-radius:8px; padding:8px 6px; box-sizing:border-box; }
+  .gc { flex:1; min-width:190px; background:linear-gradient(#1c2c22,#0d1610); border:2px solid #4f6d5a; border-radius:8px; padding:8px 6px; box-sizing:border-box; }
   .gc.none { border-style:dashed; border-color:#2b3d31; background:#0a110d; }
   .gt { font-size:11px; letter-spacing:2px; color:#9fc8a8; font-weight:700; }
-  .gi { width:104px; height:104px; margin:6px auto; border:3px solid; border-radius:8px; background:radial-gradient(#26402f,#0a110d); display:flex; align-items:center; justify-content:center; }
-  .gi img { width:88px; height:88px; image-rendering:pixelated; }
+  .gi { width:136px; height:136px; margin:6px auto; border:3px solid; border-radius:8px; background:radial-gradient(#26402f,#0a110d); display:flex; align-items:center; justify-content:center; }
+  .gi img { width:120px; height:120px; image-rendering:auto; }
   .gn { font-weight:700; font-size:15px; } .gd { font-size:12px; margin-top:4px; color:#d6efdc; }
   .pips { display:flex; gap:3px; justify-content:center; margin-top:4px; } .pips .pip { width:11px; height:11px; border:2px solid #4f6d5a; background:#0a110d; border-radius:3px; display:block; transform:rotate(45deg); } .pips .pip.on { background:#ffd23a; border-color:#8a6a1a; box-shadow:0 0 5px #ffd23a99; }
   .gtab { width:100%; margin-top:8px; font-size:14px; text-align:center; border-collapse:separate; border-spacing:0 2px; } .gtab td, .gtab th { padding:3px 6px; background:#0d1610; } .gtab th { background:none; }
@@ -740,7 +741,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 72;
+  const BUILD = 73;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -3214,12 +3215,123 @@
   IM.ttorch = [IM.torch[0], { w: '#6a4020', f: '#ff4a1a', y: '#ffd23a' }];
   IM.rebirth = [IM.mpot[0], { g: '#fff4d0', b: '#ffd23a', B: '#ffffff' }];
   function buildIcons() { for (const k in IM) { ICONC[k] = iconFrom(IM[k][0], IM[k][1]); ICONURL[k] = ICONC[k].toDataURL(); } }
-  function gearIconC(g) {
-    const k = g.slot + g.col + (g.gem || ''); if (GIC[k]) return GIC[k].c;
-    const c = iconFrom(GIM[g.slot], { t: g.col, T: shade(g.col, .45), k: shade(g.col, -.5), g: g.gem || '#ffffff', G: '#ffffff' });
-    GIC[k] = { c, url: c.toDataURL() }; return c;
+  // ---------- smooth-shaded gear art (the "Gem" style: gradients, bright edge, dark outline) ----------
+  // One drawing per slot, changing with the tier (1 Worn .. 7 Star) so every club, blade, helm and ring looks different.
+  const GURL = new Set();
+  function gearArt(g) {
+    const S2 = 2, c = mkC(64 * S2, 64 * S2), x = c.getContext('2d'); x.scale(S2, S2); x.lineJoin = 'round'; x.lineCap = 'round';
+    const t = clamp(g.tier || 1, 1, 7), col = g.col, slot = g.slot, gem = g.gem || null;
+    const L2 = shade(col, .65), L1 = shade(col, .32), D1 = shade(col, -.3), D2 = shade(col, -.55), OL = shade(col, -.82);
+    const GO = '#ffd23a', GOL = '#fff4a8', GOD = '#a8731a', WD = '#8a5a2a', WDL = '#c68e50', WDD = '#4a2a12', LE = '#7a4a22', LEL = '#b4783a', LED = '#3e2210', DK = '#10141a';
+    const lg = (x0, y0, x1, y1, st) => { const q = x.createLinearGradient(x0, y0, x1, y1); st.forEach((s, i) => q.addColorStop(i / (st.length - 1), s)); return q; };
+    const rg = (cx, cy, r, st, fx, fy) => { const q = x.createRadialGradient(fx === undefined ? cx - r * .35 : fx, fy === undefined ? cy - r * .4 : fy, r * .05, cx, cy, r); st.forEach((s, i) => q.addColorStop(i / (st.length - 1), s)); return q; };
+    const metal = (x0, x1) => lg(x0, 0, x1, 0, [L2, L1, col, D1, D2]);
+    const glow = t >= 5 ? col : null;
+    const fillS = (path, fill, lw, ol) => { x.save(); if (glow) { x.shadowColor = glow; x.shadowBlur = 5; } x.beginPath(); path(); x.fillStyle = fill; x.fill(); x.restore(); x.beginPath(); path(); x.lineWidth = lw || 2.4; x.strokeStyle = ol || OL; x.stroke(); };
+    const line = (pts, col2, lw, a) => { x.save(); x.globalAlpha = a === undefined ? 1 : a; x.beginPath(); pts.forEach((p, i) => i ? x.lineTo(p[0], p[1]) : x.moveTo(p[0], p[1])); x.strokeStyle = col2; x.lineWidth = lw; x.stroke(); x.restore(); };
+    const circ = (cx, cy, r, fill, lw) => fillS(() => x.arc(cx, cy, r, 0, 7), fill, lw);
+    const star = (cx, cy, r, fill) => { x.save(); x.shadowColor = fill; x.shadowBlur = 6; x.fillStyle = fill; x.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? r * .32 : r; x.lineTo(cx + Math.sin(a) * rr, cy - Math.cos(a) * rr); } x.closePath(); x.fill(); x.restore(); };
+    const jewel = (cx, cy, r) => { const gc = gem || (t >= 6 ? '#e07aff' : t >= 4 ? '#5ad8ff' : '#ff5a6a'); fillS(() => { x.moveTo(cx, cy - r); x.lineTo(cx + r, cy); x.lineTo(cx, cy + r); x.lineTo(cx - r, cy); x.closePath(); }, lg(cx - r, cy - r, cx + r, cy + r, [shade(gc, .7), gc, shade(gc, -.45)]), 1.6); line([[cx - r * .4, cy - r * .3], [cx, cy - r * .65]], '#ffffff', 1.4, .9); };
+    const rune = (cx, cy, s) => { x.save(); x.shadowColor = '#c8a0ff'; x.shadowBlur = 5; line([[cx, cy - s], [cx, cy + s]], '#efe0ff', 1.6); line([[cx - s * .7, cy - s * .3], [cx, cy + s * .2], [cx + s * .7, cy - s * .3]], '#efe0ff', 1.6); x.restore(); };
+    const rr = (x0, y0, w, h, r) => () => x.roundRect(x0, y0, w, h, r);
+    const goldG = (x0, x1) => lg(x0, 0, x1, 0, [GOL, GO, GOD]);
+    if (slot === 'weapon') {
+      x.save(); x.translate(32, 32); x.rotate(Math.PI / 4); { const sc = t <= 4 ? 1.28 : 1.12; x.scale(sc, sc); } x.translate(-32, -34);
+      if (t === 1) {   // club
+        fillS(() => { x.moveTo(26, 9); x.quadraticCurveTo(32, 1, 38, 9); x.quadraticCurveTo(46, 30, 37, 45); x.lineTo(36, 58); x.quadraticCurveTo(32, 63, 28, 58); x.lineTo(27, 45); x.quadraticCurveTo(18, 30, 26, 9); }, lg(19, 0, 45, 0, [WDL, WD, WDD]));
+        circ(28, 20, 1.8, metal(26, 30), 1.2); circ(36, 26, 1.8, metal(34, 38), 1.2); circ(29, 33, 1.8, metal(27, 31), 1.2); line([[30, 12], [30, 38]], WDL, 1.4, .5);
+        fillS(rr(28.5, 50, 7, 3, 1), lg(0, 50, 0, 53, [LEL, LED]), 1.4);
+      } else {
+        const tip = [0, 0, 20, 13, 8, 4, 3, 1][t], bw = [0, 0, 4, 4.6, 6, 5.4, 7.2, 6.4][t], gy = 45;
+        fillS(() => { if (t === 5) { x.moveTo(32 - bw, gy); x.quadraticCurveTo(32 - bw, 20, 37, tip); x.quadraticCurveTo(32 + bw + 6, 20, 32 + bw, gy); } else { x.moveTo(32 - bw, gy); x.lineTo(32 - bw, tip + 9); x.lineTo(32, tip); x.lineTo(32 + bw, tip + 9); x.lineTo(32 + bw, gy); } x.closePath(); }, metal(32 - bw, 32 + bw));
+        if (t >= 3) line([[32, tip + 13], [32, gy - 3]], D1, 2, .8);
+        line([[32 - bw + 1.8, tip + 11], [32 - bw + 1.8, gy - 2]], '#ffffff', 1.5, .65);
+        if (t === 6) { rune(32, 20, 3); rune(32, 30, 3); }
+        // guard
+        if (t <= 3) fillS(rr(32 - 9, gy, 18, 5, 2), lg(0, gy, 0, gy + 5, [L1, D1]), 2);
+        else fillS(() => { x.moveTo(32 - 13, gy - 3); x.quadraticCurveTo(32 - 8, gy + 1, 32, gy + 1); x.quadraticCurveTo(32 + 8, gy + 1, 32 + 13, gy - 3); x.lineTo(32 + 10, gy + 5); x.quadraticCurveTo(32, gy + 3, 32 - 10, gy + 5); x.closePath(); }, goldG(19, 45), 2);
+        if (t >= 7) star(32, gy + 1.5, 6.5, GOL);
+        else if (gem || t >= 4) jewel(32, gy + 2, 2.6);
+        // grip + pommel
+        fillS(rr(29.5, gy + 5, 5, 10, 2), lg(29, 0, 35, 0, [LEL, LE, LED]), 1.8); for (let i = 0; i < 3; i++) line([[29.5, gy + 7.5 + i * 3], [34.5, gy + 9 + i * 3]], LED, 1, .8);
+        circ(32, 62, 3.4, rg(32, 62, 3.6, [GOL, GO, GOD]), 1.8);
+      }
+      x.restore();
+    } else if (slot === 'shield') {
+      const round = t <= 2;
+      const body = () => { if (round) x.arc(32, 33, 24, 0, 7); else { x.moveTo(10, 9); x.quadraticCurveTo(32, 14, 54, 9); x.lineTo(54, 30); x.quadraticCurveTo(54, 50, 32, 61); x.quadraticCurveTo(10, 50, 10, 30); x.closePath(); } };
+      fillS(body, t === 1 ? lg(8, 0, 56, 0, [WDL, WD, WDD]) : rg(32, 33, 34, [L2, L1, col, D1]), 3);
+      x.save(); x.beginPath(); body(); x.clip();
+      if (t === 1) { for (const px of [22, 32, 42]) line([[px, 8], [px, 58]], WDD, 1.2, .7); line([[8, 20], [56, 20]], metal(8, 56), 3); line([[8, 46], [56, 46]], metal(8, 56), 3); }
+      x.restore();
+      x.save(); x.translate(32, 33); x.scale(.8, .8); x.translate(-32, -33); x.beginPath(); body(); x.lineWidth = 1.6; x.strokeStyle = t === 1 ? WDD : D1; x.stroke(); x.restore();
+      if (t === 2) for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; circ(32 + Math.cos(a) * 18, 33 + Math.sin(a) * 18, 1.4, L2, 1); }
+      if (t === 4) { line([[32, 14], [32, 54]], goldG(0, 1) === 0 ? GO : GO, 5); line([[16, 27], [48, 27]], GO, 5); line([[32, 14], [32, 54]], GOL, 1.5, .8); line([[16, 27], [48, 27]], GOL, 1.5, .8); }
+      if (t === 5) { for (const sd of [-1, 1]) fillS(() => { x.moveTo(32 + sd * 3, 38); x.quadraticCurveTo(32 + sd * 20, 30, 32 + sd * 21, 16); x.quadraticCurveTo(32 + sd * 14, 24, 32 + sd * 3, 26); x.closePath(); }, lg(8, 0, 56, 0, [L2, L1]), 1.6); }
+      if (t === 6) { rune(32, 33, 11); }
+      if (t === 7) { star(32, 32, 14, GOL); line([[12, 12], [52, 12]], GO, 2, .9); }
+      if (t >= 3 && t <= 6) circ(32, t === 4 ? 27 : 33, t === 5 ? 6 : 5, rg(32, 33, 6, [GOL, GO, GOD]), 2);
+      if (gem) jewel(32, 49, 3);
+    } else if (slot === 'helmet') {
+      const dome = () => { x.moveTo(11, 46); x.quadraticCurveTo(9, 10, 32, 8); x.quadraticCurveTo(55, 10, 53, 46); x.lineTo(53, 54); x.lineTo(11, 54); x.closePath(); };
+      if (t >= 6) for (const sd of [-1, 1]) fillS(() => { x.moveTo(32 + sd * 20, 20); x.quadraticCurveTo(32 + sd * 33, 14, 32 + sd * 27, 2); x.quadraticCurveTo(32 + sd * 26, 14, 32 + sd * 16, 14); x.closePath(); }, t === 7 ? goldG(0, 64) : lg(0, 0, 64, 0, [L2, L1, D1]), 2);
+      if (t === 4) fillS(() => { x.moveTo(30, 10); x.quadraticCurveTo(24, -2, 8, 4); x.quadraticCurveTo(22, 8, 26, 22); x.lineTo(34, 22); x.quadraticCurveTo(40, 8, 30, 10); }, lg(0, 0, 40, 0, ['#ff7a6a', '#d22a2a', '#7a1010']), 1.8);
+      fillS(dome, t === 1 ? lg(11, 0, 53, 0, [LEL, LE, LED]) : metal(11, 53), 3);
+      if (t === 1) { line([[32, 9], [32, 30]], LED, 1.4, .7); line([[14, 34], [50, 34]], LED, 1.4, .6); }
+      else { line([[17, 30], [20, 16]], '#ffffff', 2, .6); }
+      if (t >= 2) fillS(() => { x.moveTo(20, 54); x.lineTo(20, 34); x.quadraticCurveTo(32, 30, 44, 34); x.lineTo(44, 54); x.closePath(); }, t >= 4 ? lg(0, 30, 0, 54, ['#2a3340', DK]) : DK, 2);
+      if (t >= 2 && t <= 3) line([[32, 14], [32, 46]], metal(0, 1) === 0 ? L1 : L1, 4);
+      if (t >= 4) { line([[22, 40], [42, 40]], L1, 2.2, .9); line([[24, 45], [40, 45]], L1, 1.4, .6); }
+      line([[11, 50], [53, 50]], t >= 4 ? GO : D1, 3);
+      if (t >= 5) { fillS(() => { x.moveTo(26, 12); x.lineTo(32, 1); x.lineTo(38, 12); x.closePath(); }, goldG(26, 38), 1.8); }
+      if (t === 6) rune(32, 26, 5); if (t === 7) { star(32, 24, 7, GOL); } if (gem) jewel(32, 12, 3);
+    } else if (slot === 'chest') {
+      for (const sd of [-1, 1]) if (t >= 3) circ(32 + sd * 21, 16, t >= 5 ? 9 : 7.5, rg(32 + sd * 21, 16, 9, [L2, L1, col, D1]), 2.2);
+      const body = () => { x.moveTo(17, 9); x.quadraticCurveTo(32, 17, 47, 9); x.lineTo(56, 20); x.lineTo(48, 31); x.lineTo(48, 56); x.quadraticCurveTo(32, 61, 16, 56); x.lineTo(16, 31); x.lineTo(8, 20); x.closePath(); };
+      fillS(body, t <= 2 ? lg(8, 0, 56, 0, [t === 1 ? '#e8d8b0' : LEL, t === 1 ? '#c8b080' : LE, t === 1 ? '#8a7448' : LED]) : metal(8, 56), 3);
+      x.save(); x.beginPath(); body(); x.clip();
+      if (t === 3) for (let i = -8; i < 20; i++) { line([[8 + i * 4, 10], [8 + i * 4 + 26, 60]], D1, 1, .45); line([[8 + i * 4 + 26, 10], [8 + i * 4, 60]], D1, 1, .45); }
+      if (t >= 4) { line([[32, 14], [32, 58]], D1, 2.2, .8); line([[14, 34], [50, 34]], D1, 1.6, .6); line([[20, 20], [24, 40]], '#ffffff', 2, .5); }
+      x.restore();
+      fillS(() => x.ellipse(32, 11, 8, 3.6, 0, 0, 7), DK, 1.6);
+      fillS(rr(16, 44, 32, 5, 1.5), t >= 4 ? goldG(16, 48) : lg(0, 44, 0, 49, [LEL, LED]), 1.8);
+      if (t >= 4) circ(32, 46.5, 3, rg(32, 46.5, 3.5, [GOL, GO, GOD]), 1.4);
+      if (t === 6) rune(32, 31, 7); if (t === 7) star(32, 30, 10, GOL); if (gem) jewel(32, 22, 3.2);
+    } else if (slot === 'legs') {
+      fillS(rr(13, 7, 38, 9, 3), t >= 4 ? goldG(13, 51) : lg(0, 7, 0, 16, [LEL, LED]), 2.4);
+      const leg = (x0, x1) => { fillS(() => { x.moveTo(x0, 15); x.lineTo(x1, 15); x.lineTo(x1 - (x0 < 30 ? 2 : -1), 58); x.lineTo(x0 + (x0 < 30 ? 1 : 2), 58); x.closePath(); }, t === 1 ? lg(x0, 0, x1, 0, ['#e8d8b0', '#c8b080', '#8a7448']) : metal(x0, x1), 2.8);
+        line([[x0 + 4, 20], [x0 + 3.5, 54]], '#ffffff', 1.6, .5); line([[x0 + 1, 57], [x1 - 1, 57]], t >= 4 ? GO : D2, 3);
+        if (t >= 3) fillS(() => x.ellipse((x0 + x1) / 2, 37, 7, 6, 0, 0, 7), rg((x0 + x1) / 2, 37, 8, [L2, L1, col, D1]), 2);
+        if (t >= 5) star((x0 + x1) / 2, 37, 3.2, GOL); };
+      leg(14, 31); leg(33, 50); if (gem) jewel(32, 12, 2.8);
+    } else if (slot === 'boots') {
+      for (const off of [0, 1]) {
+        x.save(); if (off) { x.translate(-5, -4); x.globalAlpha = 1; }
+        fillS(() => { x.moveTo(23, 7); x.lineTo(43, 7); x.lineTo(43, 36); x.quadraticCurveTo(58, 38, 59, 50); x.lineTo(59, 57); x.lineTo(13, 57); x.lineTo(13, 40); x.quadraticCurveTo(14, 36, 23, 36); x.closePath(); }, t <= 2 ? lg(13, 0, 59, 0, [LEL, LE, LED]) : metal(13, 59), 3);
+        fillS(rr(21, 7, 24, 6, 2), t >= 4 ? goldG(21, 45) : lg(0, 7, 0, 13, [L1, D1]), 2);
+        fillS(rr(11, 54, 50, 6, 2.5), lg(0, 54, 0, 60, ['#3a3a44', '#14141a']), 2);
+        line([[26, 16], [26, 34]], '#ffffff', 1.6, .5); line([[17, 44], [34, 44]], D2, 1.4, .6);
+        if (t >= 5) fillS(() => { x.moveTo(23, 20); x.quadraticCurveTo(6, 18, 3, 6); x.quadraticCurveTo(14, 8, 23, 12); x.closePath(); }, lg(0, 0, 24, 0, [L2, L1]), 1.6);
+        if (t === 7) star(52, 47, 3, GOL);
+        x.restore(); if (!off) break;
+      }
+      if (gem) jewel(33, 22, 2.8);
+    } else {   // ring
+      x.save(); if (glow) { x.shadowColor = glow; x.shadowBlur = 7; }
+      x.beginPath(); x.arc(32, 38, 17, 0, 7); x.lineWidth = 10; x.strokeStyle = OL; x.stroke(); x.restore();
+      x.beginPath(); x.arc(32, 38, 17, 0, 7); x.lineWidth = 6; x.strokeStyle = lg(14, 20, 50, 56, [GOL === 0 ? L2 : L2, L1, col, D1, D2]); x.stroke();
+      x.beginPath(); x.arc(32, 38, 17, Math.PI * .95, Math.PI * 1.45); x.lineWidth = 2; x.strokeStyle = 'rgba(255,255,255,.8)'; x.stroke();
+      fillS(() => { x.moveTo(24, 22); x.lineTo(40, 22); x.lineTo(43, 16); x.lineTo(32, 6); x.lineTo(21, 16); x.closePath(); }, goldG(21, 43), 2);
+      jewel(32, 15, t >= 4 ? 6.2 : 5);
+      if (t >= 5) { star(10, 12, 4, '#ffffff'); star(55, 28, 3, '#ffffff'); } if (t === 7) star(52, 8, 5, GOL);
+    }
+    return c;
   }
-  const gearIconURL = (g) => { gearIconC(g); return GIC[g.slot + g.col + (g.gem || '')].url; };
+  function gearIconC(g) {
+    const k = g.slot + (g.tier || 0) + g.col + (g.gem || ''); if (GIC[k]) return GIC[k].c;
+    const c = gearArt(g); GIC[k] = { c, url: c.toDataURL() }; GURL.add(GIC[k].url); return c;
+  }
+  const gearIconURL = (g) => { gearIconC(g); return GIC[g.slot + (g.tier || 0) + g.col + (g.gem || '')].url; };
   const entryURL = (e) => typeof e === 'string' ? ICONURL[e] : gearIconURL(e);
 
   // ---------- backdrop ----------
@@ -3508,7 +3620,7 @@
   //  HUD (DOM)
   // =====================================================
   const pct = (a, b) => clamp(Math.round(100 * a / Math.max(1, b)), 0, 100) + '%';
-  const img = (url, cls) => '<img class="px' + (cls ? ' ' + cls : '') + '" src="' + url + '">';
+  const img = (url, cls) => '<img class="px' + (GURL.has(url) ? ' sm' : '') + (cls ? ' ' + cls : '') + '" src="' + url + '">';
   function slotHTML(e, attrs, extra) {
     if (e === undefined) return '<div class="slot empty"></div>';
     const nm = ename(e), w2 = esize(e) > 1;
@@ -4617,7 +4729,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   function renderShop() {
     if (TEST || !shopOpen) return; const t = shopTile(); if (!t) return closeShop();
     const strip = (x) => String(x).replace(/<[^>]+>/g, '').replace(/&#?\w+;/g, ' ').replace(/"/g, "'"), row = (ico, name, desc, btn) => '<div class="rec" title="' + strip(name) + ': ' + strip(desc) + '" style="align-items:center">' + ico + '<span class="grow"><b>' + name + '</b><br><span style="opacity:.8;font-size:12px">' + desc + '</span></span>' + btn + '</div>';
-    const im = (u) => '<img src="' + u + '" style="width:40px;height:40px;image-rendering:pixelated">', em = (c) => '<span style="font-size:30px;width:40px;text-align:center">' + c + '</span>';
+    const im = (u) => '<img src="' + u + '" style="width:40px;height:40px;image-rendering:' + (GURL.has(u) ? 'auto' : 'pixelated') + '">', em = (c) => '<span style="font-size:30px;width:40px;text-align:center">' + c + '</span>';
     let buy = '', sell = '';
     t.stock.forEach((s, i) => {
       const lack = P.gold < s.price && 'Need ' + s.price + ' gold';
@@ -4799,7 +4911,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     let h = '<h2 style="color:#ff9a3a;letter-spacing:3px">BLACKSMITH</h2><div class="note" style="margin:0 0 8px">Gold <b style="color:#ffd23a">' + P.gold + '</b> · Each piece can be reforged up to +' + upCap() + ', a little stronger each time.</div>';
     const items = smithItems();
     items.forEach((it) => { const g = it.g, up = g.up || 0, [st, amt] = smithStat(g), c = smithCost(g), off = up >= upCap() ? 'Fully reforged' : P.gold < c && 'Need ' + c + ' gold';
-      h += '<div class="rec"><img src="' + gearIconURL(g) + '" style="width:36px;height:36px;image-rendering:pixelated"><span class="grow"><b style="color:' + g.col + '">' + g.name + '</b> <span style="opacity:.7">· ' + it.where + '</span><br>' + gearDesc(g) + '</span><button class="act buy' + (off ? ' off' : '') + '" data-su="' + it.ref + '">' + (up >= upCap() ? 'Maxed' : '+' + amt + ' ' + st.toUpperCase()) + '<small>' + (off || c + ' gold') + '</small></button></div>'; });
+      h += '<div class="rec"><img src="' + gearIconURL(g) + '" style="width:40px;height:40px"><span class="grow"><b style="color:' + g.col + '">' + g.name + '</b> <span style="opacity:.7">· ' + it.where + '</span><br>' + gearDesc(g) + '</span><button class="act buy' + (off ? ' off' : '') + '" data-su="' + it.ref + '">' + (up >= upCap() ? 'Maxed' : '+' + amt + ' ' + st.toUpperCase()) + '<small>' + (off || c + ' gold') + '</small></button></div>'; });
     if (!items.length) h += '<div class="note">You have no gear to reforge.</div>';
     h += '<div style="text-align:center;margin-top:8px"><button class="act" id="smClose">Leave</button></div>';
     $('smithBox').innerHTML = h;
