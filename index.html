@@ -759,7 +759,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 86;
+  const BUILD = 87;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -4910,6 +4910,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
         '<button class="act hot" id="mnClose2" style="min-width:260px">Resume<small>or press Esc</small></button>' +
         '<button class="act" data-mt="music" style="min-width:260px">Music<small>volume, save and export tracks</small></button>' +
         '<button class="act" data-mt="guide" style="min-width:260px">How to play</button>' +
+        '<button class="act" id="openZC" style="min-width:260px">More games at zerocrunch.ca<small>opens in a new tab</small></button>' +
         '<button class="act' + (floatOn ? ' hot' : '') + '" id="setFloat" style="min-width:260px">Floating tiles: ' + (floatOn ? 'ON' : 'OFF') + '<small>hexes gently bob up and down</small></button>' +
         '<button class="act' + (hallMine ? ' hot' : '') + '" id="setHallMine" style="min-width:260px">Hall of Greats: ' + (hallMine ? 'all my runs' : 'best run per player') + '<small>how your own runs appear on the board</small></button>' +
         '<button class="act' + (autoEq ? ' hot' : '') + '" id="setAutoEq" style="min-width:260px">Auto-equip better gear: ' + (autoEq ? 'ON' : 'OFF') + '<small>picks up and wears gear that beats what you have</small></button>' +
@@ -4940,6 +4941,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     const t = e.target;
     if (t.closest('#mnClose') || t.closest('#mnClose2')) return closeMenu();
     if (t.closest('#endRun')) { endArm = true; return renderMenu(); }
+    if (t.closest('#openZC')) { window.open('https://zerocrunch.ca', '_blank', 'noopener'); return; }
     if (t.closest('#setFloat')) { floatOn = !floatOn; try { localStorage.setItem('hexfloat', floatOn ? '1' : '0'); } catch (e) {} return renderMenu(); }
     if (t.closest('#setHallMine')) { setHallMine(!hallMine); return renderMenu(); }
     if (t.closest('#setAutoEq')) { autoEq = !autoEq; try { localStorage.setItem('hexautoeq', autoEq ? '1' : '0'); } catch (e) {} return renderMenu(); }
