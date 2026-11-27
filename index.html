@@ -756,7 +756,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 82;
+  const BUILD = 83;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -3881,8 +3881,9 @@
     const ct = curTile(), inTile = ct && ct.loot.indexOf(g) >= 0, inBag = P.bag.indexOf(g) >= 0, canEq = (inTile || inBag) && !B && S.state === 'play' && !guy.mv;
     const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
     const pips = (it) => { const cap = Math.max(upCap(), it.up || 0), u = it.up || 0; let s = ''; for (let i = 0; i < cap; i++) s += '<i class="pip' + (i < u ? ' on' : '') + '"></i>'; return '<div class="dim" style="font-size:10px;letter-spacing:1px;margin-top:4px">REFORGE SLOTS</div><div class="pips" title="Each gold diamond is a reforge already done; empty ones can still be reforged at a smith">' + s + '</div><div class="dim" style="font-size:11px">' + (u >= cap ? 'All ' + cap + ' used: fully reforged' : u + ' of ' + cap + ' used (gold = done) · ' + (cap - u) + ' more at a smith') + '</div>'; };
+    const extra = (it) => { const cap = Math.max(upCap(), 0), one = (lab, n, what) => '<div class="dim" style="font-size:11px;margin-top:2px" title="' + what + '">' + lab + ' <b style="color:' + (n >= cap ? '#ffd23a' : '#cfe')+ '">' + n + ' / ' + cap + '</b></div>'; let h = ''; const sl = slotFor(it); if (sl === 'weapon') h += one('Sharpened with stones', it.sharp || 0, 'Use a stone from your bag on a weapon: +1 ATK each time'); if (sl === 'chest') h += one('Plated with iron', it.plate || 0, 'Use iron from your bag on chest armor: +1 DEF each time'); return h; };
     const card = (it, title) => '<div class="gc' + (it ? '' : ' none') + '"><div class="gt">' + title + '</div>' +
-      (it ? '<div class="gi" style="border-color:' + it.col + ';box-shadow:0 0 12px ' + it.col + '66"><img src="' + gearIconURL(it) + '"></div><div class="gn" style="color:' + it.col + '">' + it.name + '</div><div class="dim" style="font-size:12px">' + (it.tier != null && typeof TIERN !== 'undefined' && TIERN[it.tier] ? TIERN[it.tier] + ' ' : '') + (SLOTS.find(x => x[0] === slotFor(it)) || ['', ''])[1] + '</div>' + pips(it) + '<div class="gd">' + gearDesc(it) + '</div>'
+      (it ? '<div class="gi" style="border-color:' + it.col + ';box-shadow:0 0 12px ' + it.col + '66"><img src="' + gearIconURL(it) + '"></div><div class="gn" style="color:' + it.col + '">' + it.name + '</div><div class="dim" style="font-size:12px">' + (it.tier != null && typeof TIERN !== 'undefined' && TIERN[it.tier] ? TIERN[it.tier] + ' ' : '') + (SLOTS.find(x => x[0] === slotFor(it)) || ['', ''])[1] + '</div>' + pips(it) + extra(it) + '<div class="gd">' + gearDesc(it) + '</div>'
         : '<div class="dim" style="height:150px;display:flex;align-items:center;justify-content:center">Nothing equipped</div>') + '</div>';
     let rows = '';
     for (const [k, lab] of STATS) {
