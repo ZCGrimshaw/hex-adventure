@@ -54,6 +54,15 @@
   .slot.w2 { width:105px; flex-direction:row; gap:4px; }
   .slot img { width:32px; height:32px; flex:none; }
   .slot.empty { border-style:dashed; border-color:#2b3d31; background:#0a110d; cursor:default; }
+  .slot.hold { border-color:#ff4a4a; box-shadow:0 0 8px #ff4a4a99, inset 0 0 0 1px #ff4a4a55; }
+  .gc { flex:1; min-width:150px; background:linear-gradient(#1c2c22,#0d1610); border:2px solid #4f6d5a; border-radius:8px; padding:8px 6px; box-sizing:border-box; }
+  .gc.none { border-style:dashed; border-color:#2b3d31; background:#0a110d; }
+  .gt { font-size:11px; letter-spacing:2px; color:#9fc8a8; font-weight:700; }
+  .gi { width:104px; height:104px; margin:6px auto; border:3px solid; border-radius:8px; background:radial-gradient(#26402f,#0a110d); display:flex; align-items:center; justify-content:center; }
+  .gi img { width:88px; height:88px; image-rendering:pixelated; }
+  .gn { font-weight:700; font-size:15px; } .gd { font-size:12px; margin-top:4px; color:#d6efdc; }
+  .pips { display:flex; gap:3px; justify-content:center; margin-top:4px; } .pips .pip { width:11px; height:11px; border:2px solid #4f6d5a; background:#0a110d; border-radius:3px; display:block; transform:rotate(45deg); } .pips .pip.on { background:#ffd23a; border-color:#8a6a1a; box-shadow:0 0 5px #ffd23a99; }
+  .gtab { width:100%; margin-top:8px; font-size:14px; text-align:center; border-collapse:separate; border-spacing:0 2px; } .gtab td, .gtab th { padding:3px 6px; background:#0d1610; } .gtab th { background:none; }
   .slot.sel { border-color:#ffe14a; box-shadow:0 0 8px #ffe14a88; }
   .slot .n { max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; padding:0 2px; }
   .slot.w2 .n { white-space:normal; text-align:left; }
@@ -617,6 +626,20 @@
   const STACK = 5;
   function stashSlots(arr) { let n = 0; const c = {}; for (const e of arr) { if (typeof e === 'string') c[e] = (c[e] || 0) + 1; else n += 2; } for (const k in c) n += isize(k) * Math.ceil(c[k] / STACK); return n; }
   const stashUsed = () => stashSlots(S.stash);
+  // right-click a bag item to hold it: 'Store all' skips held kinds of item (shown with a red border)
+  const isHeld = (e) => typeof e === 'string' && !!(P.hold && P.hold[e]);
+  function toggleHold(i) {
+    const e = P.bag[i]; if (e === undefined) return;
+    if (typeof e !== 'string') { toast('Gear is never moved by Store all, so it needs no hold'); return; }
+    P.hold = P.hold || {}; if (P.hold[e]) delete P.hold[e]; else P.hold[e] = 1;
+    toast(P.hold[e] ? ITEMS[e].name + ' held: Store all will keep it in your bag (right-click again to release)' : ITEMS[e].name + ' released: Store all can move it'); hudDirty = true; if (stashOpen) renderStash();
+  }
+  function storeAll() {
+    let n = 0, skipped = 0, full = false;
+    for (let i = P.bag.length - 1; i >= 0; i--) { const e = P.bag[i]; if (typeof e !== 'string') continue; if (isHeld(e)) { skipped++; continue; } if (!canStash(e)) { full = true; continue; } S.stash.push(P.bag.splice(i, 1)[0]); n++; }
+    toast(n ? 'Stored ' + n + ' item' + (n > 1 ? 's' : '') + (skipped ? ' (kept ' + skipped + ' held)' : '') + (full ? ' · your stash is full' : '') : full ? 'Your stash is full' : skipped ? 'Everything left in your bag is held' : 'Nothing to store');
+    hudDirty = true; if (stashOpen) renderStash();
+  }
   const canStash = (e) => stashSlots(S.stash.concat([e])) <= S.stashCap;
   const countOf = (id, withStash) => P.bag.filter(x => x === id).length + (withStash ? S.stash.filter(x => x === id).length : 0);
   const toLoot = (e) => typeof e === 'string' ? { kind: 'item', id: e } : e;
@@ -658,7 +681,8 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, charm: null, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, charm: null, hold: {}, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    if (!d.P.hold) d.P.hold = {};
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
@@ -716,7 +740,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 71;
+  const BUILD = 72;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1303,6 +1327,7 @@
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
+    if (t.type === 'shrine') A.push({ label: 'Store all items', sub: (P.bag.filter(e => typeof e === 'string' && !isHeld(e)).length) + ' to store' + (P.bag.some(isHeld) ? ' · held items stay' : ''), off: !P.bag.some(e => typeof e === 'string' && !isHeld(e)) && 'Nothing to store', run() { storeAll(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
     if (t.type === 'tree') gather('Chop tree', '+1 wood', 'wood', () => { t.type = 'grass'; t.stump = true; regrow('tree', 75); });
@@ -3487,7 +3512,7 @@
   function slotHTML(e, attrs, extra) {
     if (e === undefined) return '<div class="slot empty"></div>';
     const nm = ename(e), w2 = esize(e) > 1;
-    return '<div class="slot' + (w2 ? ' w2' : '') + '" ' + attrs + ' title="' + nm + ': ' + (typeof e === 'string' ? ITEMS[e].d : gearDesc(e)) + '">' + img(entryURL(e)) + '<span class="n">' + nm + '</span>' + (extra || '') + '</div>';
+    return '<div class="slot' + (w2 ? ' w2' : '') + (isHeld(e) && /data-(b|i)=/.test(attrs) ? ' hold' : '') + '" ' + attrs + ' title="' + (isHeld(e) ? 'HELD (right-click to release): ' : '') + nm + ': ' + (typeof e === 'string' ? ITEMS[e].d : gearDesc(e)) + '">' + img(entryURL(e)) + '<span class="n">' + nm + '</span>' + (extra || '') + '</div>';
   }
   let gearHover = null, miniT = 0;
   // right-click gear lying on a tile: big picture plus a comparison with what you wear
@@ -3498,8 +3523,9 @@
     inspList = list && list.length ? list : [g]; inspIdx = Math.max(0, inspList.indexOf(g));
     const ct = curTile(), inTile = ct && ct.loot.indexOf(g) >= 0, inBag = P.bag.indexOf(g) >= 0, canEq = (inTile || inBag) && !B && S.state === 'play' && !guy.mv;
     const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
-    const card = (it, title) => '<div style="flex:1;min-width:150px"><div class="dim" style="font-size:12px;letter-spacing:1px">' + title + '</div>' +
-      (it ? '<img src="' + gearIconURL(it) + '" style="width:112px;height:112px;image-rendering:pixelated;margin:6px 0;filter:drop-shadow(0 0 8px ' + it.col + '88)"><div style="font-weight:700;color:' + it.col + '">' + it.name + '</div>'
+    const pips = (it) => { const cap = Math.max(upCap(), it.up || 0), u = it.up || 0; let s = ''; for (let i = 0; i < cap; i++) s += '<i class="pip' + (i < u ? ' on' : '') + '"></i>'; return '<div class="pips" title="Reforged ' + u + ' of ' + cap + ' times">' + s + '</div><div class="dim" style="font-size:11px">' + (u >= cap ? 'Fully reforged' : 'Reforged ' + u + ' / ' + cap + ' · ' + (cap - u) + ' left') + '</div>'; };
+    const card = (it, title) => '<div class="gc' + (it ? '' : ' none') + '"><div class="gt">' + title + '</div>' +
+      (it ? '<div class="gi" style="border-color:' + it.col + ';box-shadow:0 0 12px ' + it.col + '66"><img src="' + gearIconURL(it) + '"></div><div class="gn" style="color:' + it.col + '">' + it.name + '</div><div class="dim" style="font-size:12px">' + (it.tier != null && typeof TIERN !== 'undefined' && TIERN[it.tier] ? TIERN[it.tier] + ' ' : '') + (SLOTS.find(x => x[0] === slotFor(it)) || ['', ''])[1] + '</div>' + pips(it) + '<div class="gd">' + gearDesc(it) + '</div>'
         : '<div class="dim" style="height:150px;display:flex;align-items:center;justify-content:center">Nothing equipped</div>') + '</div>';
     let rows = '';
     for (const [k, lab] of STATS) {
@@ -3507,8 +3533,8 @@
       const d = a - b, col = d > 0 ? '#7dff8f' : d < 0 ? '#ff7a6a' : '#9ab';
       rows += '<tr><td style="text-align:left">' + lab + '</td><td>' + (old ? b : '-') + '</td><td><b>' + a + '</b></td><td style="color:' + col + ';font-weight:700">' + (d > 0 ? '+' : '') + d + '</td></tr>';
     }
-    $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + (inspList.length > 1 ? '<div data-ic="1" title="Next item" style="cursor:pointer;flex:1;min-width:150px">' : '<div style="flex:1;min-width:150px">') + card(g, inspSrc === 'shop' ? 'IN THE SHOP' : inspSrc === 'bag' ? 'IN YOUR BAG' : 'ON THE GROUND') + '</div></div>' +
-      '<table style="width:100%;margin-top:8px;font-size:14px;text-align:center"><tr class="dim"><th style="text-align:left"></th><th>Now</th><th>This</th><th>Change</th></tr>' + rows + '</table>' +
+    $('inspectBox').innerHTML = '<h2>' + (inspList.length > 1 ? '<button class="act" data-ic="-1" style="float:left">&#9664;</button><button class="act" data-ic="1" style="float:right">&#9654;</button>' : '') + sl.toUpperCase() + (inspList.length > 1 ? '<div class="dim" style="font-size:12px;letter-spacing:1px">ITEM ' + (inspIdx + 1) + ' OF ' + inspList.length + '</div>' : '') + '</h2><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">' + card(old, 'EQUIPPED') + (inspList.length > 1 ? '<div data-ic="1" title="Next item" style="cursor:pointer;flex:1;min-width:150px;display:flex">' : '<div style="flex:1;min-width:150px;display:flex">') + card(g, inspSrc === 'shop' ? 'IN THE SHOP' : inspSrc === 'bag' ? 'IN YOUR BAG' : 'ON THE GROUND') + '</div></div>' +
+      '<table class="gtab"><tr class="dim"><th style="text-align:left"></th><th>Now</th><th>This</th><th>Change</th></tr>' + rows + '</table>' +
       (canEq ? '<button class="act hot" data-ieq="1" style="margin-top:10px;font-size:16px">Equip ' + g.name + (gpower(g) > gpower(old) ? ' &#9650;' : '') + '</button>' : '') + (canEq && inTile ? ' <button class="act" data-icarry="1" style="margin-top:10px">Carry it<small>2 bag slots</small></button>' : '') + '<div class="dim" style="margin-top:8px;font-size:12px">' + (inspList.length > 1 ? 'Click the item, the arrows, or press Left / Right to flip through. ' : '') + 'Click outside or press Esc to close</div>';
     $('inspect').style.display = 'flex'; inspectOpen = true;
   }
@@ -3590,6 +3616,7 @@
   }
   if (!TEST) {
     $('actions').onclick = (e) => { if (warpMode) return; const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
+    $('bag').oncontextmenu = (e) => { const s = e.target.closest('[data-i]'); if (s) { e.preventDefault(); toggleHold(+s.dataset.i); } };
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
     $('bStat').onclick = () => setPV('stat'); $('bGear').onclick = () => setPV('gear'); $('bMap').onclick = () => setPV('map');
@@ -3626,16 +3653,17 @@
         '<button class="act" data-sq="-1" style="padding:2px 10px">&minus;</button><b style="min-width:28px;text-align:center">' + stQty + '</b><button class="act" data-sq="1" style="padding:2px 10px">+</button>' +
         '<button class="act" data-sg="qty">Take ' + stQty + '</button><button class="act" data-sg="half">Half</button><button class="act" data-sg="all">All</button></div>'; }
     else if (stSel) stSel = null;
-    h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="act" id="stAll">Store all items</button><button class="act alt" id="stCraft">Craft</button>' + (S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +5<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
+    h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="act" id="stAll">Store all items<small>right-click a bag item to hold it</small></button><button class="act alt" id="stCraft">Craft</button>' + (S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +5<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
     h += '<div class="note">Gear and big tools (pickaxe, ladder, raft) take 2 slots. Grow your bag with pack upgrades (3 hides + rope), merchants, and bosses. At a shrine, crafting can use materials from your stash.</div>';
     $('stashBox').innerHTML = h;
   }
+  if (!TEST) $('stashBox').oncontextmenu = (e) => { const b = e.target.closest('[data-b]'); if (b) { e.preventDefault(); toggleHold(+b.dataset.b); } };
   if (!TEST) $('stashBox').onclick = (e) => {
     const t = e.target;
     if (t.id === 'stClose') return closeStash();
     if (t.closest('#stExp')) { const c = stashCost(); if (P.gold < c) { toast('You need ' + c + ' gold'); return; } P.gold -= c; S.stashCap += 5; toast('Your stash grows to ' + S.stashCap + ' slots'); hudDirty = true; return renderStash(); }
     if (t.id === 'stCraft') { closeStash(); return openCraft(); }
-    if (t.id === 'stAll') { for (let i = P.bag.length - 1; i >= 0; i--) if (typeof P.bag[i] === 'string' && canStash(P.bag[i])) S.stash.push(P.bag.splice(i, 1)[0]); hudDirty = true; return renderStash(); }
+    if (t.id === 'stAll') return storeAll();
     const se = t.closest('[data-se]'); if (se) return stashEquip(+se.dataset.se);
     const un = t.closest('[data-un]'); if (un) return unequipToStash(un.dataset.un);
     const b = t.closest('[data-b]'); if (b) { bagToStash(+b.dataset.b); return renderStash(); }
