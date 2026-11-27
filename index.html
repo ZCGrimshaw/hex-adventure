@@ -374,6 +374,7 @@
     drain: { name: 'Drain', cost: 6, d: 50, desc: 'steal health' },
     bolt:  { name: 'Lightning', cost: 8, d: 80, desc: 'heavy damage' },
     charm: { name: 'Charm', cost: 10, d: 250, desc: 'a monster follows you' },
+    recall: { name: 'Recall', cost: 12, d: 150, desc: 'return to your last shrine' },
   };
   const SLOTS = [['weapon','Weapon'],['shield','Shield'],['helmet','Helmet'],['chest','Chest'],['legs','Legs'],['boots','Boots'],['ring1','Ring 1'],['ring2','Ring 2']];
   const TIERN = ['Worn','Bronze','Iron','Steel','Mythril','Rune','Star'];
@@ -462,6 +463,7 @@
     ladder: [[".w....w...",".wwwwww...",".w....w...",".w....w...",".wwwwww...",".w....w...",".w....w...",".wwwwww...",".w....w..."], { w: '#b07840' }],
     raft: [["..........","wwwwwwwwww","WrWWWWWrWW","wwwwwwwwww","WrWWWWWrWW","wwwwwwwwww"], { w: '#8a5a2a', W: '#b07840', r: '#e0c890' }],
     sp_fire: [[".....o....","....oo....","...ooy.o..","..ooyyoo..",".ooyyyyo..",".oyywyyo..",".oyywwyo..","..oyyyo...","...ooo...."], { o: '#ff5a1a', y: '#ffb02e', w: '#fff2a8' }],
+    sp_recall: [['....c.....','...ccCcc..','..cC...cc.','.cC.....c.','.c..ww..c.','.c..wW..c.','.cC....Cc.','..cC..Cc..','...ccCc...','....c.....'], { c: '#5ad8ff', C: '#c8f4ff', w: '#ffffff', W: '#e8faff' }],
     sp_charm: [[".rr..rr...","rRRrrRRr..","rRwRRRRr..","rRRRRRRr..",".rRRRRr...","..rRRr....","...rr....."], { r: '#d83a8c', R: '#ff7ac8', w: '#ffffff' }],
     sp_frost: [["....c.....","..c.c.c...","...ccc....","cccCCCccc.","...ccc....","..c.c.c...","....c....."], { c: '#7ad8ff', C: '#ffffff' }],
     sp_bolt: [[".....yy...","....yy....","...yy.....","..yyyyy...","....yy....","...yy.....","..yy......",".y........"], { y: '#ffe14a' }],
@@ -699,6 +701,8 @@
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
     d.S = Object.assign({ miles: 0, stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, caves: {}, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    if (d.S.sb === undefined) { d.S.sb = 0; d.S.realm = false; if (d.tiles instanceof Map) for (const t of d.tiles.values()) if (t.type === 'shrine') { if (t.sb > d.S.sb) d.S.sb = t.sb; if (t.realm) d.S.realm = true; }   // build 78 kept brick counts per shrine; now they are shared
+      if (d.S.caves) for (const k in d.S.caves) if (d.S.caves[k] && d.S.caves[k].c && d.S.caves[k].c.realm && k !== 'realm') { d.S.caves.realm = d.S.caves[k]; delete d.S.caves[k]; d.S.realm = true; } }
     if (d.S.rules === undefined) d.S.rules = 1;   // runs begun before the 3-skull rules keep their 5 skulls
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
@@ -752,7 +756,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 79;
+  const BUILD = 80;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -949,16 +953,16 @@
     P.brick--; c.braced = (c.braced || 0) + 1; hudDirty = true; const w = toWorld(guy.q, guy.r); burst(w.x, w.y - 10, 14, ['#c0623a', '#f0b89a', '#ffffff'], 40, -20);
     toast('You wedge a brick into the ' + (c.realm ? 'realm gate' : 'cave') + '. It will stay open for ' + keepVisits() + ' more visit' + (keepVisits() === 1 ? '' : 's') + ' after you leave.');
   }
-  function setShrineBrick(t) {
+  function setShrineBrick(t) {   // every shrine is the same shrine: bricks set at one count for all of them
     if ((P.sbrick || 0) < 1) return toast('You need a shrine brick');
-    P.sbrick--; t.sb = (t.sb || 0) + 1; hudDirty = true; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 24, ['#e0c8ff', '#a98ae6', '#ffffff'], 50, -30, 12);
-    if (t.sb >= 3) { t.realm = true; t.visits = 0; flash = .6; toast('The shrine blazes with light... a HIGHER REALM has opened! It will never close: return whenever you like.'); }
-    else toast('The shrine hums as the brick fuses into it (' + t.sb + ' / 3). ' + (3 - t.sb) + ' more to open a Higher Realm.');
+    P.sbrick--; S.sb = (S.sb || 0) + 1; hudDirty = true; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 24, ['#e0c8ff', '#a98ae6', '#ffffff'], 50, -30, 12);
+    if (S.sb >= 3) { S.realm = true; flash = .6; toast('The shrine blazes with light... a HIGHER REALM has opened! It will never close: return whenever you like.'); }
+    else toast('Every shrine hums as the brick fuses into them (' + S.sb + ' / 3). ' + (3 - S.sb) + ' more to open a Higher Realm.');
   }
   function enterCave(t, realm) {
-    S.caves = S.caves || {}; const k = key(t.q, t.r), old = S.caves[k]; let c;
+    S.caves = S.caves || {}; const k = realm ? 'realm' : key(t.q, t.r), old = S.caves[k]; let c;
     if (old) {
-      delete S.caves[k]; if (!old.c.realm) t.visits = Math.max(0, (t.visits || 1) - 1); c = old.c; c.saved = { tiles, mons }; c.braced = 0; S.cave = c; tiles = old.tiles; mons = old.mons; particles = [];
+      delete S.caves[k]; if (!old.c.realm) t.visits = Math.max(0, (t.visits || 1) - 1); c = old.c; c.entrance = { q: t.q, r: t.r }; c.saved = { tiles, mons }; c.braced = 0; S.cave = c; tiles = old.tiles; mons = old.mons; particles = [];
       for (const m of mons.values()) { const mw = toWorld(m.q, m.r); m.x = mw.x; m.y = mw.y; }
       toast('You climb back down into the ' + (c.realm ? 'realm' : 'cave') + ', just as you left it.');
     } else {
@@ -967,7 +971,7 @@
       c.guardAt = ri(10, c.max - 6); S.cave = c; stats.caves++;
       tiles = new Map(); mons = new Map(); particles = [];
       tiles.set(key(0, 0), { q: 0, r: 0, type: 'caveexit', born: gt, phase: 0, loot: [], cave: true, realm: !!realm });
-      if (realm) { t.sb = 0; toast('You step into a pale glowing realm. Explore, face its guardian, and return through the gate. Bricks can hold the gate open.'); }
+      if (realm) { S.sb = 0; toast('You step into a pale glowing realm. Explore, face its guardian, and return through the gate. Bricks can hold the gate open.'); }
       else toast('You climb down into the dark. Explore, find the cave guardian, and climb back out the rope when you are done. A brick on the rope keeps the way open for another visit.');
     }
     guy.q = 0; guy.r = 0; guy.x = 0; guy.y = 0; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null;
@@ -978,9 +982,9 @@
     const c = S.cave; if (!c) return;
     const caveTiles = tiles, caveMons = mons, keep = c.realm ? 1 : collapse ? 0 : keepVisits();
     tiles = c.saved.tiles; mons = c.saved.mons; particles = [];
-    const ent = tiles.get(key(c.entrance.q, c.entrance.r)), ek = key(c.entrance.q, c.entrance.r); S.caves = S.caves || {};
+    const ent = tiles.get(key(c.entrance.q, c.entrance.r)), ek = c.realm ? 'realm' : key(c.entrance.q, c.entrance.r); S.caves = S.caves || {};
     if (ent && keep > 0) { delete c.saved; S.caves[ek] = { c, tiles: caveTiles, mons: caveMons }; ent.visits = c.realm ? 0 : keep; }
-    else { delete S.caves[ek]; if (ent) { ent.visits = 0; if (c.realm) { ent.realm = false; ent.sb = 0; } else ent.type = 'cavedone'; } }
+    else { delete S.caves[ek]; if (ent) { ent.visits = 0; if (!c.realm) ent.type = 'cavedone'; } }
     for (const h of c.petHomes) { const ht = tiles.get(key(h.q, h.r)); if (ht && ht.type === 'grass' && !monAt(h.q, h.r)) ht.type = 'bearfriend'; }
     S.cave = null;
     guy.q = c.entrance.q; guy.r = c.entrance.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null;
@@ -1162,7 +1166,7 @@
   }
   // the first rune you ever meet gives a spell book and a free first spell; every rune after that gives a spell point
   // spell points are spent on new spells and stronger spells at a shop
-  const SPCOST = { fire: 1, heal: 1, frost: 1, drain: 2, bolt: 3, charm: 3 };
+  const SPCOST = { fire: 1, heal: 1, frost: 1, drain: 2, bolt: 3, charm: 3, recall: 2 };
   const spellBuyCost = (k) => P.spells[k] ? P.spells[k] : SPCOST[k];
   function learnSpell(tile) {
     if (!P.book) { askBook(tile); return; }
@@ -1365,8 +1369,8 @@
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
-    if (t.type === 'shrine') { if (t.realm) A.push({ label: 'Enter the Higher Realm', sub: S.caves && S.caves[key(t.q, t.r)] ? 'explored ' + S.caves[key(t.q, t.r)].c.n + ' / ' + S.caves[key(t.q, t.r)].c.max + ' · always open' : 'a pale realm above the shrine', hot: true, run() { enterCave(t, true); } });
-      else A.push({ label: 'Set a shrine brick', sub: (t.sb || 0) + ' / 3 set · ' + (P.sbrick || 0) + ' in your pouch', off: !(P.sbrick) && 'You need a shrine brick (1 in 7 bricks from blasted walls)', run() { setShrineBrick(t); } }); }
+    if (t.type === 'shrine') { if (S.realm) A.push({ label: 'Enter the Higher Realm', sub: S.caves && S.caves.realm ? 'explored ' + S.caves.realm.c.n + ' / ' + S.caves.realm.c.max + ' · every shrine leads here' : 'a pale realm above the shrine', hot: true, run() { enterCave(t, true); } });
+      else A.push({ label: 'Set a shrine brick', sub: (S.sb || 0) + ' / 3 set on every shrine · ' + (P.sbrick || 0) + ' in your pouch', off: !(P.sbrick) && 'You need a shrine brick (1 in 7 bricks from blasted walls)', run() { setShrineBrick(t); } }); }
     if (t.type === 'shrine') A.push({ label: 'Store all items', sub: (P.bag.filter((e, i) => typeof e === 'string' && !heldAt(i)).length) + ' to store' + (heldCount() ? ' · held items stay' : ''), off: !P.bag.some((e, i) => typeof e === 'string' && !heldAt(i)) && 'Nothing to store', run() { storeAll(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
@@ -1495,7 +1499,7 @@
   }
 
   // ---------- spells on the map ----------
-  const SP_ORDER = ['fire', 'frost', 'bolt', 'drain', 'heal', 'charm'];
+  const SP_ORDER = ['fire', 'frost', 'bolt', 'drain', 'heal', 'charm', 'recall'];
   // you know any number of spells but only carry a few; swap them at a shrine, add slots with Arcane Focus
   const spellSlots = () => Math.min(6, 3 + sk('focus'));
   const activeSpells = () => SP_ORDER.filter(k => P.spells[k] && P.loadout && P.loadout.indexOf(k) >= 0);
@@ -1504,10 +1508,11 @@
     tidyLoadout();
     for (const k of SP_ORDER) if (P.spells[k] && P.loadout.length < spellSlots() && P.loadout.indexOf(k) < 0) P.loadout.push(k);
   }
-  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f', charm: '#ff7ac8', 'i:seestone': '#b48aff', 'a:arrow': '#f0e0c0', 'a:farrow': '#ff8a2a', 'a:iarrow': '#8ae0ff', 'a:parrow': '#9aff5a' };
+  const SPCOL = { fire: '#ff8a2a', frost: '#8ae0ff', bolt: '#ffe14a', drain: '#c878ff', heal: '#7dff8f', charm: '#ff7ac8', recall: '#5ad8ff', 'i:seestone': '#b48aff', 'a:arrow': '#f0e0c0', 'a:farrow': '#ff8a2a', 'a:iarrow': '#8ae0ff', 'a:parrow': '#9aff5a' };
   const SPHELP = { fire: 'On the map: hit a monster, melt ice, light braziers and dark caves, set trees alight. Range 3',
     frost: 'On the map: hit and freeze a monster, put out fires, freeze a lake solid to walk on. Range 3',
     bolt: 'On the map: heavy damage to a monster, shatter boulders. Range 3', drain: 'On the map: hit a monster and heal yourself. Range 3', heal: 'Heal yourself right now',
+    recall: 'Instantly return to the last shrine you stepped on, with your pet. Not usable inside a cave or realm, or in a fight',
     charm: 'Charm a monster (not bosses) so it follows and fights for you for a while. Same level as you is a good chance; each level above makes it harder. Range 3' };
   let aim = null, mapFx = [], wtxt = [];
   function lightBrazier(t, how) { t.lit = true; S.boss.have++; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 20, FIRE, 40, -30); toast(how + ' ignites the brazier! (' + S.boss.have + '/3)'); if (S.boss.have >= 3) openLair(); }
@@ -1631,6 +1636,8 @@
     if (k === 'frost') { const fz = 15 + (m.iceBonus || 0); m.iceBonus = 0; m.cool = gt + fz; m.iced = gt + fz; if (!m.warden && !m.boss) { m.roam = true; m.hunted = true; m.fury = true; } toast(m.name + ' is frozen in place for a while' + (m.fury ? ', then it will hunt you!' : '')); }
     else if (m.warden) { toast(m.name + ' is hurt but guards its sigil'); }
     else { m.roam = true; m.hunted = true; m.fury = true; m.cool = 0; toast(m.name + ' is hurt and charges straight at you!'); }
+    // cast at something right next to you and it hits back almost every time (a frozen foe cannot)
+    if (k !== 'frost' && !m.boss && !B && hd(m.q - guy.q, m.r - guy.r) === 1 && rnd() < .95) { toast(m.name + ' lashes out at you!'); later(() => { if (!B && mons.has(key(m.q, m.r)) && hd(m.q - guy.q, m.r - guy.r) === 1) startBattle(m, 'ambush'); }, 400); }
   }
   function castHeal() {
     if (P.mp < SPELLS.heal.cost) return toast('Not enough magic');
@@ -1638,9 +1645,21 @@
     P.mp -= SPELLS.heal.cost; stats.spells++; const b = P.hp; P.hp = Math.min(maxHP(), P.hp + Math.round(maxHP() * (.35 + .05 * (P.spells.heal - 1))));
     wtxt.push({ x: guy.x, y: guy.y - 26, txt: '+' + (P.hp - b), col: '#7dff8f', t: gt }); burst(guy.x, guy.y - 12, 16, ['#7dff8f', '#ffffff'], 25, -30, 0); hudDirty = true; if (!B) roamTick();
   }
+  function castRecall() {
+    if (S.cave) return toast('The magic cannot reach through solid rock. Climb out first');
+    const t = S.cp; if (!t || !tiles.has(key(t.q, t.r))) return toast('You have no shrine to return to yet');
+    if (guy.q === t.q && guy.r === t.r) return toast('You are already at your shrine');
+    if (P.mp < SPELLS.recall.cost) return toast('Not enough magic');
+    P.mp -= SPELLS.recall.cost; stats.spells++; const o = toWorld(guy.q, guy.r); burst(o.x, o.y - 14, 22, ['#5ad8ff', '#ffffff', '#c8f4ff'], 40, -30, 20);
+    guy.q = t.q; guy.r = t.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null; sel = null; aim = null; bagSel = null;
+    if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
+    flash = .8; cam.x = w.x; cam.y = w.y - 6; burst(w.x, w.y - 14, 22, ['#5ad8ff', '#ffffff', '#c8f4ff'], 40, -30, 20);
+    toast('The world folds around you... you are back at your shrine'); onEnter(t); hudDirty = true; later(saveNow, 50);
+  }
   function selectSpell(k) {
     if (!P.spells[k] || activeSpells().indexOf(k) < 0 || B || S.state !== 'play' || stashOpen || craftOpen) return;
     if (k === 'heal') { aim = null; castHeal(); return; }
+    if (k === 'recall') { aim = null; castRecall(); return; }
     if (P.mp < SPELLS[k].cost) { toast('Not enough magic for ' + SPELLS[k].name); return; }
     aim = aim === k ? null : k; bagSel = null; hudDirty = true;
     if (aim) toast(SPELLS[k].name + ': click a highlighted target. Right-click or Esc to cancel');
@@ -3958,7 +3977,7 @@
     $('actions').onclick = (e) => { if (warpMode) return; const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
     $('bag').addEventListener('click', (e) => { const pc = e.target.closest('[data-pouch]'); if (!pc || B || S.state !== 'play' || guy.mv) return; const ct = curTile();
       if (pc.dataset.pouch === 'brick') { if (ct && ct.type === 'caveexit' && S.cave) braceCave(); else toast('Bricks brace a cave: stand on the rope tile inside a cave and brace it'); }
-      else if (ct && ct.type === 'shrine' && !ct.realm) setShrineBrick(ct); else toast('Shrine bricks are set into a shrine. Three open a Higher Realm'); });
+      else if (ct && ct.type === 'shrine' && !S.realm) setShrineBrick(ct); else toast('Shrine bricks are set into a shrine. Three open a Higher Realm'); });
     $('bag').oncontextmenu = (e) => { const s = e.target.closest('[data-i]'); if (s) { e.preventDefault(); toggleHold(+s.dataset.i); } };
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
@@ -5208,7 +5227,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   function renderCraft() {
     if (TEST || !craftOpen) return;
     const atS = stashReach();
-    let h = '<h2>CRAFTING</h2><div class="note" style="margin:0 0 6px">Combine items from your bag' + (atS ? ' and your stash' : '') + '. New recipes appear as you find ingredients or puzzles.</div>';
+    let h = '<h2>CRAFTING</h2><div class="note" style="margin:0 0 6px">' + (atS ? 'At a shrine your bag and stash count together: craft anything you have the materials for.' : 'Combine items from your bag.') + '. New recipes appear as you find ingredients or puzzles.</div>';
     h += '<div class="ctabs" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-bottom:6px">' + CRAFTTABS.map(([k, lab]) => {
       const n = RECIPES.filter(x => k === 'all' || recipeTabs(x).has(k)).length;
       return '<button class="act' + (craftTab === k ? ' hot' : '') + '" data-ct="' + k + '" style="padding:4px 9px;font-size:12px">' + lab + '<small style="display:inline;margin-left:4px">' + n + '</small></button>'; }).join('') + '</div>';
@@ -5246,7 +5265,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     let h = '';
     if (B.turn === 'done') h = B.result === 'fled' ? '' : btn('Continue', '', 'close');
     else if (B.turn === 'enemy') h = '<div class="small">...</div>';
-    else if (B.menu === 'magic') { for (const k of activeSpells()) h += btn(SPELLS[k].name, SPELLS[k].cost + ' MP · ' + SPELLS[k].desc, 'magic', k, P.mp < SPELLS[k].cost); h += btn('Back', '', 'menu', 'main'); }
+    else if (B.menu === 'magic') { for (const k of activeSpells().filter(x => x !== 'recall')) h += btn(SPELLS[k].name, SPELLS[k].cost + ' MP · ' + SPELLS[k].desc, 'magic', k, P.mp < SPELLS[k].cost); h += btn('Back', '', 'menu', 'main'); }
     else if (B.menu === 'bow') { for (const [k, nm, ds] of [['arrow', 'Arrow', ''], ['farrow', 'Fire arrow', 'extra damage'], ['iarrow', 'Ice arrow', 'freezes (not bosses)'], ['parrow', 'Poison arrow', 'poisons']]) if (ammo(k)) h += btn('<img class="px' + (GURL.has(ICONURL[k]) ? ' sm' : '') + '" src="' + ICONURL[k] + '" style="width:18px;height:18px;vertical-align:middle"> ' + nm, ammo(k) + ' left' + (ds ? ' · ' + ds : ''), 'shoot', k); h += btn('Back', '', 'menu', 'main'); }
     else if (B.menu === 'items') { P.bag.forEach((id, i) => { if (battleUsable(id)) h += btn('<img class="px' + (GURL.has(ICONURL[id]) ? ' sm' : '') + '" src="' + ICONURL[id] + '" style="width:18px;height:18px;vertical-align:middle"> ' + ITEMS[id].name, ITEMS[id].d, 'item', i); }); h += btn('Back', '', 'menu', 'main'); }
     else {
