@@ -628,16 +628,23 @@
   function stashSlots(arr) { let n = 0; const c = {}; for (const e of arr) { if (typeof e === 'string') c[e] = (c[e] || 0) + 1; else n += 2; } for (const k in c) n += isize(k) * Math.ceil(c[k] / STACK); return n; }
   const stashUsed = () => stashSlots(S.stash);
   // right-click a bag item to hold it: 'Store all' skips held kinds of item (shown with a red border)
-  const isHeld = (e) => typeof e === 'string' && !!(P.hold && P.hold[e]);
+  // holds are per box: P.hold maps an item id to the list of which copy of it (0 = first in the bag, 1 = second...) is held
+  const holdList = (e) => (P.hold && Array.isArray(P.hold[e])) ? P.hold[e] : [];
+  const ordAt = (i) => { let n = 0; for (let k = 0; k < i; k++) if (P.bag[k] === P.bag[i]) n++; return n; };
+  const heldAt = (i) => typeof P.bag[i] === 'string' && holdList(P.bag[i]).indexOf(ordAt(i)) >= 0;
+  const heldCount = () => P.bag.reduce((n, e, i) => n + (heldAt(i) ? 1 : 0), 0);
   function toggleHold(i) {
     const e = P.bag[i]; if (e === undefined) return;
     if (typeof e !== 'string') { toast('Gear is never moved by Store all, so it needs no hold'); return; }
-    P.hold = P.hold || {}; if (P.hold[e]) delete P.hold[e]; else P.hold[e] = 1;
-    toast(P.hold[e] ? ITEMS[e].name + ' held: Store all will keep it in your bag (right-click again to release)' : ITEMS[e].name + ' released: Store all can move it'); hudDirty = true; if (stashOpen) renderStash();
+    P.hold = P.hold || {}; const o = ordAt(i), L = holdList(e).slice(), at = L.indexOf(o);
+    if (at >= 0) L.splice(at, 1); else L.push(o);
+    if (L.length) P.hold[e] = L; else delete P.hold[e];
+    toast(at < 0 ? ITEMS[e].name + ' held: Store all will keep this one in your bag (right-click it again to release)' : ITEMS[e].name + ' released: Store all can move it'); hudDirty = true; if (stashOpen) renderStash();
   }
   function storeAll() {
-    let n = 0, skipped = 0, full = false;
-    for (let i = P.bag.length - 1; i >= 0; i--) { const e = P.bag[i]; if (typeof e !== 'string') continue; if (isHeld(e)) { skipped++; continue; } if (!canStash(e)) { full = true; continue; } S.stash.push(P.bag.splice(i, 1)[0]); n++; }
+    let n = 0, skipped = 0, full = false; const held = P.bag.map((e, i) => heldAt(i)), moved = new Set(), orig = P.bag.slice();
+    for (let i = P.bag.length - 1; i >= 0; i--) { const e = P.bag[i]; if (typeof e !== 'string') continue; if (held[i]) { skipped++; continue; } if (!canStash(e)) { full = true; continue; } S.stash.push(P.bag.splice(i, 1)[0]); moved.add(i); n++; }
+    { const nh = {}, cnt = {}; orig.forEach((e, i) => { if (moved.has(i) || typeof e !== 'string') return; const o = cnt[e] || 0; cnt[e] = o + 1; if (held[i]) (nh[e] = nh[e] || []).push(o); }); P.hold = nh; }
     toast(n ? 'Stored ' + n + ' item' + (n > 1 ? 's' : '') + (skipped ? ' (kept ' + skipped + ' held)' : '') + (full ? ' · your stash is full' : '') : full ? 'Your stash is full' : skipped ? 'Everything left in your bag is held' : 'Nothing to store');
     hudDirty = true; if (stashOpen) renderStash();
   }
@@ -684,6 +691,7 @@
   function migrate(d) {
     d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, charm: null, hold: {}, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (!d.P.hold) d.P.hold = {};
+    for (const k in d.P.hold) if (!Array.isArray(d.P.hold[k])) delete d.P.hold[k];   // build 72 saved holds by item kind; they are now per box
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
@@ -741,7 +749,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 76;
+  const BUILD = 77;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1328,7 +1336,7 @@
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
-    if (t.type === 'shrine') A.push({ label: 'Store all items', sub: (P.bag.filter(e => typeof e === 'string' && !isHeld(e)).length) + ' to store' + (P.bag.some(isHeld) ? ' · held items stay' : ''), off: !P.bag.some(e => typeof e === 'string' && !isHeld(e)) && 'Nothing to store', run() { storeAll(); } });
+    if (t.type === 'shrine') A.push({ label: 'Store all items', sub: (P.bag.filter((e, i) => typeof e === 'string' && !heldAt(i)).length) + ' to store' + (heldCount() ? ' · held items stay' : ''), off: !P.bag.some((e, i) => typeof e === 'string' && !heldAt(i)) && 'Nothing to store', run() { storeAll(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
     if (t.type === 'tree') gather('Chop tree', '+1 wood', 'wood', () => { t.type = 'grass'; t.stump = true; regrow('tree', 75); });
@@ -3779,8 +3787,8 @@
   const img = (url, cls) => '<img class="px' + (GURL.has(url) ? ' sm' : '') + (cls ? ' ' + cls : '') + '" src="' + url + '">';
   function slotHTML(e, attrs, extra) {
     if (e === undefined) return '<div class="slot empty"></div>';
-    const nm = ename(e), w2 = esize(e) > 1;
-    return '<div class="slot' + (w2 ? ' w2' : '') + (isHeld(e) && /data-(b|i)=/.test(attrs) ? ' hold' : '') + '" ' + attrs + ' title="' + (isHeld(e) ? 'HELD (right-click to release): ' : '') + nm + ': ' + (typeof e === 'string' ? ITEMS[e].d : gearDesc(e)) + '">' + img(entryURL(e)) + '<span class="n">' + nm + '</span>' + (extra || '') + '</div>';
+    const nm = ename(e), w2 = esize(e) > 1, bi = /data-(?:b|i)="(\d+)"/.exec(attrs), hd = !!bi && heldAt(+bi[1]);
+    return '<div class="slot' + (w2 ? ' w2' : '') + (hd ? ' hold' : '') + '" ' + attrs + ' title="' + (hd ? 'HELD (right-click to release): ' : '') + nm + ': ' + (typeof e === 'string' ? ITEMS[e].d : gearDesc(e)) + '">' + img(entryURL(e)) + '<span class="n">' + nm + '</span>' + (extra || '') + '</div>';
   }
   let gearHover = null, miniT = 0;
   // right-click gear lying on a tile: big picture plus a comparison with what you wear
@@ -3814,8 +3822,9 @@
     const it = P.eq[sl], lab = SLOTS.find(x => x[0] === sl)[1];
     return it ? '<b style="color:' + it.col + '">' + it.name + '</b><br>' + gearDesc(it) : '<span class="dim">' + lab + ': empty</span>';
   }
+  function pruneHold() { if (!P.hold) return; for (const k in P.hold) { const n = P.bag.filter(x => x === k).length, L = Array.isArray(P.hold[k]) ? P.hold[k].filter(o => o < n) : []; if (L.length) P.hold[k] = L; else delete P.hold[k]; } }
   function renderHud() {
-    hudDirty = false;
+    hudDirty = false; pruneHold();
     if (TEST) return;
     let sk = ''; const cap = skullCap(); for (let i = 0; i < cap; i++) sk += img(i < S.deaths ? ICONURL.skull : ICONURL.skullD);
     const mh = maxHP(), mm = maxMP(), xn = xpNeed(P.lvl);
