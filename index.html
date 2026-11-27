@@ -332,6 +332,8 @@
     shroom:  { name: 'Glowcap', d: 'Eat: a little health and magic' },
     hide:    { name: 'Animal hide', d: 'Crafting: 3 hides + rope make a bigger pack' },
     bridge:  { name: 'Bridge', d: 'Spans a chasm. Use it next to one', size: 2 },
+    brick:   { name: 'Brick', d: 'Kept in your pouch, not your bag. Brace a cave so it stays open for one more visit' },
+    sbrick:  { name: 'Shrine brick', d: 'Kept in your pouch. Set into a shrine: three open a Higher Realm' },
     pack:    { name: 'Pack upgrade', d: 'Use: +1 bag slot for good (max 12)' },
   };
   const SEE_AT = 301, SEE_R = 3;   // seeing stones unlock at tile 301 and can be thrown 3 hexes
@@ -653,6 +655,7 @@
   const toLoot = (e) => typeof e === 'string' ? { kind: 'item', id: e } : e;
   const atShrine = () => !!curTile() && curTile().type === 'shrine';
   function giveItem(e) {
+    if (e === 'brick' || e === 'sbrick') { P[e] = (P[e] || 0) + 1; P.seen[e] = 1; hudDirty = true; return true; }
     if (bagUsed() + esize(e) > P.bagCap) return false;
     P.bag.push(e); if (typeof e === 'string') P.seen[e] = 1; hudDirty = true; return true;
   }
@@ -689,13 +692,13 @@
   function deleteSave() { if (!canSave()) return; idbDo('readwrite', st => st.delete('run')).catch(() => {}); }
   // older saves keep loading after updates: any field a newer version added gets its starting value
   function migrate(d) {
-    d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, charm: null, hold: {}, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
+    d.P = Object.assign({ ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hire: null, charm: null, hold: {}, brick: 0, sbrick: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: null, seen: {}, known: {}, spells: {}, spts: 0, bHp: 0, bAtk: 0, gold: 0, bag: [] }, d.P);
     if (!d.P.hold) d.P.hold = {};
     for (const k in d.P.hold) if (!Array.isArray(d.P.hold[k])) delete d.P.hold[k];   // build 72 saved holds by item kind; they are now per box
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
-    d.S = Object.assign({ miles: 0, stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    d.S = Object.assign({ miles: 0, stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, caves: {}, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.rules === undefined) d.S.rules = 1;   // runs begun before the 3-skull rules keep their 5 skulls
     if (d.S.nextShrine === undefined || d.S.revealed >= 13) d.S.nextShrine = 1e9;
     d.stats = Object.assign(freshStats(), d.stats);
@@ -749,7 +752,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 77;
+  const BUILD = 78;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -786,7 +789,7 @@
   const freshStats = () => ({ kills: 0, elites: 0, chests: 0, gold: 0, dealt: 0, taken: 0, spells: 0, items: 0, shrines: 1, fled: 0, far: 0, steps: 0, traps: 0, puzzles: 0, bears: 0, crafted: 0, lookouts: 0, bosses: 0, caves: 0, caveTiles: 0, guardians: 0 });
   function newGame(noOnline) {
     tiles = new Map(); mons = new Map(); particles = []; B = null; pet = null; bagSel = null;
-    P = { ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, tt: 0, hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
+    P = { ammo: { arrow: 0, farrow: 0, iarrow: 0, parrow: 0 }, brick: 0, sbrick: 0, tt: 0, hp: 30, mp: 8, xp: 0, lvl: 1, gold: 0, bagCap: 6, sp: 0, sk: {}, lock: {}, awk: 0, loadout: [], bHp: 0, bAtk: 0, bag: [], spells: {}, spts: 0, book: false, bookDue: false, seen: {}, known: {},
           eq: { weapon: null, shield: null, helmet: null, chest: null, legs: null, boots: null, ring1: null, ring2: null } };
     S = { state: 'play', rules: 2, revealed: 0, miles: 0, deaths: 0, nextShrine: 13, lastShrine: -7, nextShop: 24, nextHire: 28, nextSmith: 50, unl: {}, mseed: (Math.random() * 4294967296) >>> 0, gemsSpent: 0, freeRests: 3, cp: null, t0: Date.now(), stash: [], stashCap: 25, due: [], keyDue: false, nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, firstCave: ri(18, 30), lastCave: -99, caveSeen: false };
     stats = freshStats();
@@ -939,43 +942,67 @@
     toast('+' + n + ' SPACE GEM' + (n > 1 ? 'S' : '') + '! ' + (why || '') + ' (' + gemBal() + ' to spend)');
     if (!S.gemTip) { S.gemTip = true; later(() => toast('Space gems: spend 1 to rest fully at a shrine. Every gem you find also counts toward your leaderboard score, and spending never lowers it.'), 2600); }
   }
-  function enterCave(t) {
-    const d = S.revealed + 12;
-    S.cave = { entrance: { q: t.q, r: t.r }, saved: { tiles, mons }, d, n: 0, max: ri(22, 34), guardAt: 0, guard: null, petHomes: [] };
-    S.cave.guardAt = ri(10, S.cave.max - 6);
-    stats.caves++;
-    tiles = new Map(); mons = new Map(); particles = [];
-    tiles.set(key(0, 0), { q: 0, r: 0, type: 'caveexit', born: gt, phase: 0, loot: [], cave: true });
+  // a cave (or a shrine's Higher Realm) normally collapses when you climb out. Each brick used on the rope tile keeps it open for one more visit.
+  const keepVisits = () => { const c = S.cave; if (!c) return 0; const ent = c.saved.tiles.get(key(c.entrance.q, c.entrance.r)); return ((ent && ent.visits) || 0) + (c.braced || 0); };
+  function braceCave() {
+    const c = S.cave; if (!c || (P.brick || 0) < 1) return toast('You need a brick to brace it');
+    P.brick--; c.braced = (c.braced || 0) + 1; hudDirty = true; const w = toWorld(guy.q, guy.r); burst(w.x, w.y - 10, 14, ['#c0623a', '#f0b89a', '#ffffff'], 40, -20);
+    toast('You wedge a brick into the ' + (c.realm ? 'realm gate' : 'cave') + '. It will stay open for ' + keepVisits() + ' more visit' + (keepVisits() === 1 ? '' : 's') + ' after you leave.');
+  }
+  function setShrineBrick(t) {
+    if ((P.sbrick || 0) < 1) return toast('You need a shrine brick');
+    P.sbrick--; t.sb = (t.sb || 0) + 1; hudDirty = true; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 24, ['#e0c8ff', '#a98ae6', '#ffffff'], 50, -30, 12);
+    if (t.sb >= 3) { t.realm = true; t.visits = 0; flash = .6; toast('The shrine blazes with light... a HIGHER REALM has opened! Step through when you are ready.'); }
+    else toast('The shrine hums as the brick fuses into it (' + t.sb + ' / 3). ' + (3 - t.sb) + ' more to open a Higher Realm.');
+  }
+  function enterCave(t, realm) {
+    S.caves = S.caves || {}; const k = key(t.q, t.r), old = S.caves[k]; let c;
+    if (old) {
+      delete S.caves[k]; t.visits = Math.max(0, (t.visits || 1) - 1); c = old.c; c.saved = { tiles, mons }; c.braced = 0; S.cave = c; tiles = old.tiles; mons = old.mons; particles = [];
+      for (const m of mons.values()) { const mw = toWorld(m.q, m.r); m.x = mw.x; m.y = mw.y; }
+      toast('You climb back down into the ' + (c.realm ? 'realm' : 'cave') + ', just as you left it.');
+    } else {
+      const d = S.revealed + (realm ? 25 : 12);
+      c = { entrance: { q: t.q, r: t.r }, saved: { tiles, mons }, d, n: 0, max: realm ? ri(26, 38) : ri(22, 34), guardAt: 0, guard: null, petHomes: [], braced: 0, realm: !!realm };
+      c.guardAt = ri(10, c.max - 6); S.cave = c; stats.caves++;
+      tiles = new Map(); mons = new Map(); particles = [];
+      tiles.set(key(0, 0), { q: 0, r: 0, type: 'caveexit', born: gt, phase: 0, loot: [], cave: true, realm: !!realm });
+      if (realm) { t.sb = 0; toast('You step into a pale glowing realm. Explore, face its guardian, and return through the gate. Bricks can hold the gate open.'); }
+      else toast('You climb down into the dark. Explore, find the cave guardian, and climb back out the rope when you are done. A brick on the rope keeps the way open for another visit.');
+    }
     guy.q = 0; guy.r = 0; guy.x = 0; guy.y = 0; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null;
     if (pet) { pet.q = 0; pet.r = 0; pet.x = -10; pet.y = 0; }
-    cam.x = 0; cam.y = -10; flash = .6; bagSel = null;
-    toast('You climb down into the dark. Explore, find the cave guardian, and climb back out the rope when you are done.'); hudDirty = true;
+    cam.x = 0; cam.y = -10; flash = .6; bagSel = null; lockDirty = true; hudDirty = true;
   }
-  function exitCave(silent) {
+  function exitCave(silent, collapse) {
     const c = S.cave; if (!c) return;
+    const caveTiles = tiles, caveMons = mons, keep = collapse ? 0 : keepVisits();
     tiles = c.saved.tiles; mons = c.saved.mons; particles = [];
-    const ent = tiles.get(key(c.entrance.q, c.entrance.r)); if (ent) ent.type = 'cavedone';
+    const ent = tiles.get(key(c.entrance.q, c.entrance.r)), ek = key(c.entrance.q, c.entrance.r); S.caves = S.caves || {};
+    if (ent && keep > 0) { delete c.saved; S.caves[ek] = { c, tiles: caveTiles, mons: caveMons }; ent.visits = keep; }
+    else { delete S.caves[ek]; if (ent) { ent.visits = 0; if (c.realm) { ent.realm = false; ent.sb = 0; } else ent.type = 'cavedone'; } }
     for (const h of c.petHomes) { const ht = tiles.get(key(h.q, h.r)); if (ht && ht.type === 'grass' && !monAt(h.q, h.r)) ht.type = 'bearfriend'; }
     S.cave = null;
     guy.q = c.entrance.q; guy.r = c.entrance.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null;
     if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
-    cam.x = w.x; cam.y = w.y - 10; flash = .6;
-    if (!silent) toast('You climb back into the light. The cave rumbles and collapses behind you.');
+    cam.x = w.x; cam.y = w.y - 10; flash = .6; lockDirty = true;
+    if (!silent) toast(keep > 0 ? 'You climb back into the light. The ' + (c.realm ? 'gate' : 'cave') + ' stays open for ' + keep + ' more visit' + (keep === 1 ? '' : 's') + '.' : c.realm ? 'You step back to the shrine. The realm fades behind you.' : 'You climb back into the light. The cave rumbles and collapses behind you.');
     hudDirty = true;
   }
   function genCaveTile(q, r) {
     const c = S.cave, d = c.d + c.n;
-    const t = { q, r, type: 'cfloor', born: gt, phase: (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) * 0.45, loot: [], cave: true };
+    const rl = !!c.realm, t = { q, r, type: rl ? 'rfloor' : 'cfloor', born: gt, phase: (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) * 0.45, loot: [], cave: true, realm: rl };
     let type;
     if (c.n + 1 === c.guardAt) type = 'den';
+    else if (rl) type = wpick([['rfloor', 26], ['monster', 22], ['crystal', 10], ['chest', 5], ['gemvein', 2.4 * (1 + sk('gems'))], ['mystery', 2]]);
     else type = wpick([['cfloor', 22], ['stalag', 9], ['monster', 22], ['shrooms', 7], ['crystal', 5], ['ore', 5], ['flint', 3], ['pool', 4], ['bones', 6], ['chest', 4], ['trap', 6], ['boulder', 2], ['gemvein', 1.3 * (1 + sk('gems'))], ['mystery', 2]]);
     switch (type) {
       case 'den': {
-        t.type = 'den'; const def = pick(CAVEG), m = makeBoss(def, d, 0); m.guardian = true; m.xp = Math.round(m.xp * .6); m.gold = Math.round(m.gold * .7);
+        t.type = 'den'; const def = pick(CAVEG), m = makeBoss(def, d, rl ? 1 : 0); m.guardian = true; m.xp = Math.round(m.xp * (rl ? 1.1 : .6)); m.gold = Math.round(m.gold * (rl ? 1.4 : .7));
         m.maxHp = Math.round(m.maxHp * .8); m.hp = m.maxHp; m.name = def.n; placeMon(m, q, r); c.guard = m; } break;
       case 'monster': {
-        const av = MON.filter(m => CAVEMON.includes(m.n) && m.d <= d), base = pick(av.length ? av : MON.slice(0, 3));
-        const m = makeMonster(d, { base, lv: rnd() < .3 ? 1 : 0 }); m.roam = rnd() < .25; placeMon(m, q, r); } break;
+        const av = MON.filter(m => (rl || CAVEMON.includes(m.n)) && m.d <= d), base = pick(av.length ? av : MON.slice(0, 3));
+        const m = makeMonster(d, { base, lv: rnd() < (rl ? .5 : .3) ? 1 : 0 }); m.roam = rnd() < .25; placeMon(m, q, r); } break;
       case 'chest': t.type = 'chest'; t.rich = true; t.safe = rnd() < .8; break;
       case 'shrooms': t.type = type; t.units = 2; break;
       case 'crystal': t.type = type; t.units = rnd() < .5 ? 2 : 1; break;
@@ -1284,7 +1311,7 @@
     const wleft = () => { if (t.water === undefined) t.water = WATERCAP[t.type]; return t.water; };
     const water = () => { if (wleft() > 0) { gather('Draw water', t.water + ' left · magic, or douse fire', 'water', () => { t.water--; t.waterAt = gt + 90; }); eat('Drink here', 'water', () => { t.water--; t.waterAt = gt + 90; }); }
       else A.push({ label: 'Draw water', sub: 'refills slowly', off: 'Drawn dry for now: it refills slowly', run() {} }); };
-    const plain = !t.loot.length && (t.type === 'grass' || t.type === 'dirt' || t.type === 'rubble' || t.type === 'cfloor') && !(S.cp === t);
+    const plain = !t.loot.length && (t.type === 'grass' || t.type === 'dirt' || t.type === 'rubble' || t.type === 'cfloor' || t.type === 'rfloor') && !(S.cp === t);
     if (plain) { const w = countOf('wood'), lit = countOf('flint') > 0 ? 'flint' : countOf('torch') > 0 ? 'torch' : null;
       A.push({ label: 'Build a campfire', sub: '2 wood + flint (or a torch) · cook, rest, melts ice next to it', off: (w < 2 || !lit) && 'Needs 2 wood and flint (or a torch)', run() {
         const take = (k) => P.bag.splice(P.bag.indexOf(k), 1); take('wood'); take('wood'); take(lit);
@@ -1319,8 +1346,10 @@
     }
     if (sigilReady(t)) A.push({ label: 'Awaken the sigil', sub: 'its warden is gone', better: true, run() { awakenSigil(t); } });
     if (t.type === 'spring') { const dry = !!t.dry; A.push({ label: 'Drink from the spring', sub: dry ? 'run dry' : 'full health and magic, one use only', better: !dry && springHurt(), off: dry ? 'The spring has run dry' : !springHurt() && 'You are already at full strength', run() { drinkSpring(t); } }); }
-    if (t.type === 'cavelit') A.push({ label: 'Enter the cave', sub: 'a temporary underground world', hot: true, run() { enterCave(t); } });
-    if (t.type === 'caveexit') A.push({ label: 'Leave the cave', sub: (S.cave && S.cave.guard && S.cave.guard.hp > 0 && mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'the guardian still lurks! ' : '') + 'the cave collapses behind you', hot: true, run() { exitCave(); } });
+    if (t.type === 'cavelit') A.push({ label: 'Enter the cave', sub: t.visits ? 'braced open: ' + t.visits + ' visit' + (t.visits === 1 ? '' : 's') + ' left' : 'a temporary underground world', hot: true, run() { enterCave(t); } });
+    if (t.type === 'caveexit' && S.cave) { const kv = keepVisits(), rl = S.cave.realm;
+      A.push({ label: 'Brace with a brick', sub: (P.brick || 0) + ' in your pouch · +1 visit (now ' + kv + ')', off: !(P.brick) && 'You need a brick (they drop from blasted walls)', run() { braceCave(); } });
+      A.push({ label: rl ? 'Return to the shrine' : 'Leave the cave', sub: (S.cave.guard && S.cave.guard.hp > 0 && mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'the guardian still lurks! ' : '') + (kv ? 'stays open for ' + kv + ' more visit' + (kv === 1 ? '' : 's') : rl ? 'the realm fades behind you' : 'the cave collapses behind you'), hot: true, run() { exitCave(); } }); }
     if (t.type === 'shrooms') { const f = () => { if (--t.units <= 0) t.type = 'cfloor'; }; gather('Pick glowcap', t.units + ' left', 'shroom', f); eat('Eat a glowcap here', 'shroom', f); }
     if (t.type === 'pool') { if (t.fish > 0) { gather('Catch blind fish', t.fish + ' left', 'fish', () => { t.fish--; }); eat('Catch and eat a fish', 'fish', () => { t.fish--; }); } water(); }
     if (t.type === 'gemvein') {
@@ -1336,6 +1365,8 @@
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
+    if (t.type === 'shrine') { if (t.realm) A.push({ label: 'Enter the Higher Realm', sub: t.visits ? 'held open: ' + t.visits + ' visit' + (t.visits === 1 ? '' : 's') + ' left' : 'a pale realm above the shrine', hot: true, run() { enterCave(t, true); } });
+      else A.push({ label: 'Set a shrine brick', sub: (t.sb || 0) + ' / 3 set · ' + (P.sbrick || 0) + ' in your pouch', off: !(P.sbrick) && 'You need a shrine brick (1 in 7 bricks from blasted walls)', run() { setShrineBrick(t); } }); }
     if (t.type === 'shrine') A.push({ label: 'Store all items', sub: (P.bag.filter((e, i) => typeof e === 'string' && !heldAt(i)).length) + ' to store' + (heldCount() ? ' · held items stay' : ''), off: !P.bag.some((e, i) => typeof e === 'string' && !heldAt(i)) && 'Nothing to store', run() { storeAll(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
     const regrow = (ty, sec) => { t.regrow = { type: ty, at: gt + sec }; };
@@ -1438,12 +1469,13 @@
     t.type = 'cavelit'; burst(p.x, p.y - 8, 20, ['#ffb02e', '#fff2a8'], 40, -30);
     toast('The torch reveals a passage leading deep underground. Step onto the cave to go inside.');
   }
+  const dropBricks = (t, n) => { for (let i = 0; i < n; i++) t.loot.push({ kind: 'item', id: rnd() < 1 / 7 ? 'sbrick' : 'brick' }); };
   function smashBoulder(t) {
     const d = S.revealed, p = toWorld(t.q, t.r); stats.puzzles++;
-    t.type = 'rubble'; t.loot.push({ kind: 'item', id: 'iron' }); t.loot.push({ kind: 'item', id: 'stone' }); if (rnd() < .35) t.loot.push({ kind: 'item', id: 'crystal' });
+    t.type = 'rubble'; t.loot.push({ kind: 'item', id: 'iron' }); t.loot.push({ kind: 'item', id: 'stone' }); t.loot.push({ kind: 'item', id: 'stone' }); if (rnd() < .35) t.loot.push({ kind: 'item', id: 'crystal' });
     const g = ri(4, 10) + Math.floor(d / 6); P.gold += gm(g); stats.gold += g; flash = .2;
     burst(p.x, p.y - 8, 34, ['#aab4be', '#6c7782', '#ffffff'], 70, -30);
-    toast('CRACK! The boulder shatters. Ore and ' + g + ' gold tumble out');
+    toast('CRACK! The boulder shatters. Ore, stone and ' + g + ' gold tumble out');
   }
   // a burning campfire (or lit brazier) melts any ice block touching it
   function meltAround(t, how) { let n = 0; for (const [a, b] of DIRS) { const i = tiles.get(key(t.q + a, t.r + b)); if (i && i.type === 'ice') { meltIce(i, how); n++; } } return n; }
@@ -1696,9 +1728,9 @@
     if (id === 'bomb' || id === 'crbomb') {
       const w = near('wall');
       O.push({ label: 'Use: blow up wall', sub: 'opens the sealed hex', better: !!w, off: !w && 'Stand next to a rock wall (or save it for battle)', run() {
-        spend(); w.type = 'chest'; w.safe = true; w.rich = true; stats.puzzles++;
+        spend(); w.type = 'rubble'; stats.puzzles++; { const d = S.revealed, g = ri(8, 16) + Math.floor(d / 5); P.gold += gm(g); stats.gold += g; dropBricks(w, ri(3, 5)); w.loot.push(randItem(d)); if (rnd() < .45) w.loot.push(makeGear(d, 1)); }
         const p = toWorld(w.q, w.r); burst(p.x, p.y - 6, 44, ['#ff9a2a', '#ffe14a', '#8892a0', '#ffffff'], 90, -40); flash = .5;
-        toast('BOOM! The wall crumbles. A treasure was sealed inside!'); } });
+        toast('BOOM! The wall crumbles into bricks, with a stash of gold and treasure behind it!'); } });
     }
     if (id === 'fish' || id === 'cooked') {
       const b = near('bear'), bf = near('bearfriend');
@@ -2015,7 +2047,7 @@
   function die(m) {
     S.deaths++;
     let t = curTile(), inCave = !!S.cave;
-    if (inCave) { const ent = S.cave.entrance; if (pet) petHome(); exitCave(true); t = tiles.get(key(ent.q, ent.r)); }
+    if (inCave) { const ent = S.cave.entrance; if (pet) petHome(); exitCave(true, true); t = tiles.get(key(ent.q, ent.r)); }
     for (const s in P.eq) if (P.eq[s]) { t.loot.push(P.eq[s]); P.eq[s] = null; }
     P.bag.forEach(e => t.loot.push(toLoot(e))); P.bag = [];
     if (t.loot.length) t.grave = true;
@@ -2353,6 +2385,7 @@
   };
   for (const k in TP) { const q = TP[k]; q.sideD = q.side.map(c => shade(c, -.3)); q.sideL = q.side.map(c => shade(c, .14)); q.stoneL = shade(q.side[2], .4); q.rockL = shade(q.rock[0], .2); q.lipD = shade(q.lip, -.22); q.lipL = q.top[2]; }
   const palKey = (t) => {
+    if (t.realm && t.type !== 'crystal') return 'marble';
     switch (t.type) {
       case 'river': return 'water';
       case 'lake': case 'lakeraft': return 'deep';
@@ -3244,6 +3277,7 @@
   const arrowIc = (h) => [["........hh", ".......hhh", "......shh.", ".....s.h..", "....s.....", "...s......", "ff.s......", ".fs.......", "f.f.......", ".........."], { s: '#c8a060', h, f: '#e8e8f0' }];
   IM.arrow = arrowIc('#b8bcc8'); IM.farrow = arrowIc('#ff7a2a'); IM.iarrow = arrowIc('#8ae0ff'); IM.parrow = arrowIc('#7aff4a');
   IM.ttorch = [IM.torch[0], { w: '#6a4020', f: '#ff4a1a', y: '#ffd23a' }];
+  IM.brick = IM.stone; IM.sbrick = IM.stone;
   IM.rebirth = [IM.mpot[0], { g: '#fff4d0', b: '#ffd23a', B: '#ffffff' }];
   function buildIcons() { for (const k in IM) { const big = itemArt(k); if (big) { ICONC[k] = miniOf(big); ICONURL[k] = big.toDataURL(); GURL.add(ICONURL[k]); } else { ICONC[k] = iconFrom(IM[k][0], IM[k][1]); ICONURL[k] = ICONC[k].toDataURL(); } } }
   // ---------- smooth-shaded gear art (the "Gem" style: gradients, bright edge, dark outline) ----------
@@ -3478,6 +3512,12 @@
       fillS(() => x.roundRect(25, 32, 14, 24, 6), lg(25, 0, 39, 0, ['#f4f0e8', '#c8d4d0']), 2.6);
       x.save(); x.shadowColor = '#5ae8e0'; x.shadowBlur = 10; fillS(() => { x.moveTo(6, 36); x.quadraticCurveTo(6, 6, 32, 6); x.quadraticCurveTo(58, 6, 58, 36); x.quadraticCurveTo(32, 42, 6, 36); }, rg(32, 20, 34, ['#c8fff4', '#2ac8c0', '#1a6a8a']), 2.8); x.restore();
       for (const [cx, cy, r] of [[20, 24, 3.4], [34, 16, 3], [46, 26, 3.6]]) circ(cx, cy, r, '#f0fffa', 1.4); },
+    brick: (K) => { const { x, lg, fillS, line } = K;
+      for (const [bx, by] of [[5, 8], [27, 25], [5, 42]]) { fillS(() => x.roundRect(bx, by, 32, 15, 3), lg(0, by, 0, by + 15, ['#f0b89a', '#c0623a', '#7a3220']), 2.6); line([[bx + 4, by + 4], [bx + 22, by + 4]], '#ffffff', 1.8, .5); line([[bx + 6, by + 10], [bx + 12, by + 10]], '#5a2410', 1.2, .4); } },
+    sbrick: (K) => { const { x, lg, fillS, line, sp } = K;
+      x.save(); x.shadowColor = '#c8a0ff'; x.shadowBlur = 8;
+      for (const [bx, by] of [[5, 8], [27, 25], [5, 42]]) { fillS(() => x.roundRect(bx, by, 32, 15, 3), lg(0, by, 0, by + 15, ['#f4eaff', '#a98ae6', '#5a3a9a']), 2.6, '#2a1650'); line([[bx + 4, by + 4], [bx + 22, by + 4]], '#ffffff', 1.8, .7); }
+      x.restore(); sp(44, 14, 6, '#ffffff'); sp(14, 50, 5, '#e8d0ff'); },
     ttorch: null, gem: null, skull: null,
   };
   const OLc = '#1a1420';
@@ -3573,7 +3613,7 @@
     const { ox, oy } = view();
     G = ctx; ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0); ctx.imageSmoothingEnabled = false; texPump(TQ.length > 30 ? 16 : 9); if (!TQ.length) warmPump(B ? 2 : 5);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-    if (S.cave) { ctx.fillStyle = '#060508'; ctx.fillRect(0, 0, W, H); for (let i = 0; i < 40; i++) { const x = Math.floor(((hash(i) * W * 1.3 - cam.x * .05) % W + W) % W), y = Math.floor(((hash(i + 40) * H * 1.3 - cam.y * .05 + gt * (4 + hash(i) * 8)) % H + H) % H); ctx.fillStyle = '#2a2a3a'; ctx.fillRect(x, y, 1, 2); } }
+    if (S.cave) { ctx.fillStyle = S.cave.realm ? '#140a2a' : '#060508'; ctx.fillRect(0, 0, W, H); for (let i = 0; i < 40; i++) { const x = Math.floor(((hash(i) * W * 1.3 - cam.x * .05) % W + W) % W), y = Math.floor(((hash(i + 40) * H * 1.3 - cam.y * .05 + gt * (4 + hash(i) * 8)) % H + H) % H); ctx.fillStyle = S.cave.realm ? '#9a7ae0' : '#2a2a3a'; ctx.fillRect(x, y, 1, 2); } }
     else if (nebula) { const nx = -60 - clamp(cam.x * .02, -50, 50), ny = -60 - clamp(cam.y * .02, -50, 50); drawHi(nebula, nx, ny, nebula.uw, nebula.uh); if (planetC) lpFeet(planetC, nx + planetC.px, ny + planetC.py); if (moonC) lpFeet(moonC, nx + moonC.px, ny + moonC.py); }
     if (!S.cave) for (const s of stars) { const tw = .5 + .5 * Math.sin(gt * s.sp + s.b * 20); if (tw < .15 && s.b < .5) continue;
       const x = Math.floor(((s.x * W - cam.x * s.d) % W + W) % W), y = Math.floor(((s.y * H - cam.y * s.d) % H + H) % H);
@@ -3837,7 +3877,7 @@
       (pet ? '<div class="call bear"><b>' + petName().replace(/^./, c => c.toUpperCase()) + ' buddy</b> · HP ' + pet.hp + ' / ' + pet.max + '</div>' : '') +
       (P.charm ? '<div class="call bear"><b>\u2665 ' + P.charm.name + '</b> (charmed) · HP ' + P.charm.hp + ' / ' + P.charm.max + '<br>' + Math.max(0, P.charm.left) + ' tiles of charm left</div>' : '') +
       (P.hire ? '<div class="call bear"><b>' + P.hire.name + '</b> (' + P.hire.cls + ') · HP ' + P.hire.hp + ' / ' + P.hire.max + '<br>' + Math.max(0, P.hire.left) + ' tiles of wages left</div>' : '');
-    if (S.cave) st += '<div class="call cave"><b>IN A CAVE</b> · ' + S.cave.n + ' / ' + S.cave.max + ' explored<br>' + (S.cave.guard ? (mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'Guardian: ' + S.cave.guard.name + ' (Lv ' + S.cave.guard.L + ')' : 'Guardian defeated!') : 'The guardian hides deeper...') + '<br>Climb the rope to leave</div>';
+    if (S.cave) st += '<div class="call cave"><b>' + (S.cave.realm ? 'IN THE HIGHER REALM' : 'IN A CAVE') + '</b> · ' + S.cave.n + ' / ' + S.cave.max + ' explored<br>' + (S.cave.guard ? (mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'Guardian: ' + S.cave.guard.name + ' (Lv ' + S.cave.guard.L + ')' : 'Guardian defeated!') : 'The guardian hides deeper...') + '<br>' + (S.cave.realm ? 'Return through the gate to leave' : 'Climb the rope to leave') + (keepVisits() ? ' · held open: ' + keepVisits() + ' visit' + (keepVisits() === 1 ? '' : 's') : '') + '</div>';
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
     else st += '<div class="call dim">Next boss around tile ' + S.nextBoss + '</div>';
     if (P.sp) st += '<div class="call" style="border-color:#ffd23a"><b style="color:#ffe14a">' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend!</b> Press K</div>';
@@ -3857,6 +3897,7 @@
     const quiver = () => { const q = ['arrow', 'farrow', 'iarrow', 'parrow'].filter(k => ammo(k)).map(k => ammo(k) + (k === 'arrow' ? '' : k[0] === 'f' ? 'F' : k[0] === 'i' ? 'I' : 'P')).join(' '); return '<span style="position:absolute;top:1px;right:3px;font-size:10px;color:#ffe14a;font-weight:700">' + (q || '0') + '</span>'; };
     P.bag.forEach((e, i) => { used += esize(e); b += slotHTML(e, 'data-i="' + i + '"', e === 'bow' ? quiver() : e === 'ttorch' ? '<span style="position:absolute;top:1px;right:3px;font-size:10px;color:#ff9a3a;font-weight:700">' + P.tt + '</span>' : '').replace('class="slot', 'class="slot' + (bagSel === i ? ' sel' : '')); });
     for (let i = used; i < P.bagCap; i++) b += '<div class="slot empty"></div>';
+    for (const [pk, nm, tip] of [['brick', 'Brick', 'Bricks (pouch, not your bag). Click on a cave rope tile to brace it open for one more visit'], ['sbrick', 'Shrine brick', 'Shrine bricks (pouch). Click while standing on a shrine to set one. Three open a Higher Realm']]) if (P[pk] > 0) b += '<div class="slot pouch" data-pouch="' + pk + '" title="' + tip + '">' + img(ICONURL[pk]) + '<span class="n">' + nm + ' x' + P[pk] + '</span></div>';
     if (renderHud.bagH !== b) { renderHud.bagH = b; $('bag').innerHTML = b; }
     if (bagSel !== null && (P.bag[bagSel] === undefined || B)) bagSel = null;
     const A = bagSel !== null ? itemOptions(bagSel) : guy.mv || aim ? [] : actionsFor(curTile()); renderHud.A = A;
@@ -3893,6 +3934,9 @@
   }
   if (!TEST) {
     $('actions').onclick = (e) => { if (warpMode) return; const b = e.target.closest('[data-a]'); if (b) runAction(renderHud.A[+b.dataset.a]); };
+    $('bag').addEventListener('click', (e) => { const pc = e.target.closest('[data-pouch]'); if (!pc || B || S.state !== 'play' || guy.mv) return; const ct = curTile();
+      if (pc.dataset.pouch === 'brick') { if (ct && ct.type === 'caveexit' && S.cave) braceCave(); else toast('Bricks brace a cave: stand on the rope tile inside a cave and brace it'); }
+      else if (ct && ct.type === 'shrine' && !ct.realm) setShrineBrick(ct); else toast('Shrine bricks are set into a shrine. Three open a Higher Realm'); });
     $('bag').oncontextmenu = (e) => { const s = e.target.closest('[data-i]'); if (s) { e.preventDefault(); toggleHold(+s.dataset.i); } };
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
