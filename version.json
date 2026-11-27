@@ -1,4 +1,4 @@
 {
-  "build": 85,
-  "notes": "Shrine warp now says it costs a crystal shard (not space gems) and that bag plus stash count."
+  "build": 86,
+  "notes": "Shrine warping now uses a Crystal beacon, crafted from 4 crystal shards. Pets show a hungry fish icon and warn you before they wander off."
 }

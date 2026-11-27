@@ -329,6 +329,7 @@
     ladder:  { name: 'Ladder', d: 'Reach the top of a cliff', size: 2 },
     raft:    { name: 'Raft', d: 'Cross a deep lake', size: 2 },
     ckey:    { name: 'Crystal key', d: 'Opens a crystal door' },
+    beacon:  { name: 'Crystal beacon', d: 'Used at a shrine to warp to another shrine (one use)' },
     shroom:  { name: 'Glowcap', d: 'Eat: a little health and magic' },
     hide:    { name: 'Animal hide', d: 'Crafting: 3 hides + rope make a bigger pack' },
     bridge:  { name: 'Bridge', d: 'Spans a chasm. Use it next to one', size: 2 },
@@ -348,6 +349,7 @@
     { id: 'ladder', needs: { wood: 2, rope: 1 }, skill: ['artisan', 1] },
     { id: 'raft', needs: { wood: 3, rope: 1 }, skill: ['artisan', 2] },
     { id: 'ckey', needs: { crystal: 3 }, skill: ['artisan', 2] },
+    { id: 'beacon', needs: { crystal: 4 } },
     { id: 'pack', needs: { hide: 3, rope: 1 }, skill: ['artisan', 3] },
     { id: 'mpot', needs: { water: 1, crystal: 1 }, skill: ['alchemy', 1] },
     { id: 'smoke', needs: { flint: 1, wood: 1, vine: 1 }, skill: ['alchemy', 1] },
@@ -474,6 +476,7 @@
     pack: [["...ssss...","..s....s..",".pppppppp.",".pPPppppp.",".pppyyppp.",".pppyyppp.",".pppppppp.","..pppppp.."], { s: '#6a4420', p: '#8a5a2a', P: '#b07a40', y: '#ffd23a' }],
     gem: [["....w.....","...cMc....","..cMWMc...",".cMMWMMc..","cMMMWMMMc.",".mMMMMMm..","..mmMmm...","...mmm....","....m....."], { c: '#5ad8ff', m: '#9a3ad8', M: '#e07aff', W: '#ffffff', w: '#ffffff' }],
     shroom: [["..........","..cccccc..",".cCcCccCc.","cccccccccc","...ssss...","...sSss...","...ssss...","..ssssss.."], { c: '#3ad8c8', C: '#c0fff6', s: '#d8d0c0', S: '#ffffff' }],
+    beacon: [[".....c....","....cCc...","...cCCCc..","....cCc...","...ccccc..","..sssssss."], { c: '#7ae8ff', C: '#ffffff', s: '#5a6a8a' }],
     ckey: [["..........",".ccc......","cCCCc.....","cC.Ccccccc","cCCCc..c.c",".ccc...c.."], { c: '#7ae8ff', C: '#ffffff' }],
     skull: [["..kkkkkk..",".kwwwwwwk.","kwwwwwwwwk","kwkkwwkkwk","kwkkwwkkwk","kwwwkkwwwk",".kwwwwwwk.","..kwkwkwk.","..kkkkkk.."], { k: '#1a1a1a', w: '#f0f0f0' }],
     skullD: [["..kkkkkk..",".kwwwwwwk.","kwwwwwwwwk","kwkkwwkkwk","kwkkwwkkwk","kwwwkkwwwk",".kwwwwwwk.","..kwkwkwk.","..kkkkkk.."], { k: '#0e140f', w: '#2c3a30' }],
@@ -756,7 +759,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 85;
+  const BUILD = 86;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1368,7 +1371,7 @@
         else if (gb) { S.gemsSpent = (S.gemsSpent || 0) + 1; P.hp = maxHP(); P.mp = maxMP(); toast('You offer a space gem and rest fully'); }
         else { P.hp = Math.min(maxHP(), P.hp + Math.ceil(maxHP() / 2)); P.mp = Math.min(maxMP(), P.mp + Math.ceil(maxMP() / 2)); toast('With no space gem to offer, you only catch your breath (half restored)'); }
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
-    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal shard (' + cr + ' held, bag + stash)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal shard (the blue crystals, not space gems)', run() { startWarp(); } }); }
+    if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('beacon', true), sh = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal beacon (' + cr + ' held; craft 4 crystal shards into one)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && (sh >= 4 ? 'Craft a crystal beacon first (4 shards, press C)' : 'You need a crystal beacon: craft one from 4 crystal shards (you have ' + sh + ')'), run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
     if (t.type === 'shrine') { if (S.realm) A.push({ label: 'Enter the Higher Realm', sub: S.caves && S.caves.realm ? 'explored ' + S.caves.realm.c.n + ' / ' + S.caves.realm.c.max + ' · every shrine leads here' : 'a pale realm above the shrine', hot: true, run() { enterCave(t, true); } });
       else A.push({ label: 'Set a shrine brick', sub: (S.sb || 0) + ' / 3 set on every shrine · ' + (P.sbrick || 0) + ' in your pouch', off: !(P.sbrick) && 'You need a shrine brick (1 in 7 bricks from blasted walls)', run() { setShrineBrick(t); } }); }
@@ -1440,7 +1443,9 @@
   // a hungry or hurt animal gets unhappy and one day just leaves, with no warning
   function petHunger() {
     if (!pet) return;
-    pet.hunger = (pet.hunger || 0) + (pet.hp < pet.max * .5 ? 1.5 : 1);
+    const h0 = pet.hunger || 0; pet.hunger = h0 + (pet.hp < pet.max * .5 ? 1.5 : 1);
+    if (h0 < 55 && pet.hunger >= 55) toast('Your ' + petName() + ' looks hungry. Feed it fish, meat or berries from your bag (use the item).');
+    else if (h0 < 80 && pet.hunger >= 80) toast('Your ' + petName() + ' is starving and may wander off soon!');
     if (pet.hunger > 90 && rnd() < Math.min(1, (pet.hunger - 90) / 120)) { toast('Your ' + petName() + ' wandered off and did not come back.'); pet = null; hudDirty = true; }
   }
   function petHome() {
@@ -3298,7 +3303,7 @@
     const bx = pet.x + ox, by = pet.y + oy + bob;
     ell(bx, by, 8, 2, 'rgba(0,20,8,0.45)');
     { const sc = 1 + .22 * ((pet.lvl || 1) - 1), bl = bearLP(sc, false, petKind()); if (bl) lpFeet(bl, bx, by - hop, pet.face > 0); else if (petKind() === 'bear') drawFeet(sprite('bear', SPR.bear, BEARPAL), bx, by - hop, pet.face > 0); }
-    if (Math.floor(gt * .7) % 4 === 0) heart(bx - 2, by - 22);
+    if ((pet.hunger || 0) >= 55) { const ic = ICONC.fish; if (ic && Math.floor(gt * 2) % 2 === 0) G.drawImage(ic, bx - 8, by - 26); } else if (Math.floor(gt * .7) % 4 === 0) heart(bx - 2, by - 22);
     if (pet.hp < pet.max) { px(bx - 8, by + 3, 16, 3, '#000'); px(bx - 7, by + 4, Math.max(1, Math.round(14 * pet.hp / pet.max)), 1, '#7dff8f'); }
   }
 
@@ -3507,6 +3512,10 @@
     arrow: null,
     key: (K) => { const { x, lg, rg, fillS, line, circ } = K; const G = lg(0, 0, 64, 0, ['#fff4a8', '#ffd23a', '#a8731a']);
       fillS(() => x.roundRect(28, 28, 32, 7, 3), G, 2.4); fillS(() => x.roundRect(46, 34, 6, 10, 2), G, 2); fillS(() => x.roundRect(55, 34, 5, 8, 2), G, 2); circ(16, 31, 12, rg(16, 31, 14, ['#fff4a8', '#ffd23a', '#a8731a']), 2.8); circ(16, 31, 4.6, '#10141a', 1.6); line([[8, 25], [12, 21]], '#ffffff', 2.4, .8); },
+    beacon: (K) => { const { x, lg, rg, fillS, line, circ } = K;
+      fillS(() => { x.moveTo(16, 56); x.lineTo(22, 50); x.lineTo(42, 50); x.lineTo(48, 56); x.closePath(); }, lg(0, 50, 0, 56, ['#9aa8c8', '#4a5878']), 2.2);
+      fillS(() => { x.moveTo(32, 6); x.lineTo(46, 26); x.lineTo(40, 48); x.lineTo(24, 48); x.lineTo(18, 26); x.closePath(); }, rg(30, 24, 26, ['#ffffff', '#7ae8ff', '#2a6aa8']), 2.6);
+      line([[32, 10], [32, 46]], '#ffffff', 1.6, .55); line([[18, 26], [46, 26]], '#ffffff', 1.4, .45); line([[24, 18], [28, 12]], '#ffffff', 2.4, .85); },
     ckey: (K) => { const { x, lg, rg, fillS, line, circ } = K; const G = lg(0, 0, 64, 0, ['#e8faff', '#5ad8ff', '#2a6aa8']);
       fillS(() => x.roundRect(28, 28, 32, 7, 3), G, 2.4); fillS(() => x.roundRect(46, 34, 6, 10, 2), G, 2); fillS(() => x.roundRect(55, 34, 5, 8, 2), G, 2); circ(16, 31, 12, rg(16, 31, 14, ['#e8faff', '#5ad8ff', '#2a6aa8']), 2.8); circ(16, 31, 4.6, '#10141a', 1.6); line([[8, 25], [12, 21]], '#ffffff', 2.4, .8); },
     vine: (K) => { const { x, lg, fillS, line } = K;
@@ -3665,7 +3674,7 @@
 
     let hoverT = null, hoverC = null;
     const busy = B || stashOpen || craftOpen || skillsOpen || bookOpen || menuOpen || shopOpen || hallOpen || springOpen;
-    if (warpMode && (B || S.state !== 'play' || S.cave || !atShrine() || guy.mv || !countOf('crystal', true))) endWarp();
+    if (warpMode && (B || S.state !== 'play' || S.cave || !atShrine() || guy.mv || !countOf('beacon', true))) endWarp();
     if (warpMode) sel = null;
     if (sel && (S.state !== 'play' || busy || !(tiles.has(key(sel.q, sel.r)) || isCand(sel.q, sel.r)))) sel = null;
     const hcell = sel || (mouse.x > -900 ? cellAtMouse() : null);
@@ -4974,7 +4983,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   }
   // ---------- shop window ----------
   let shopOpen = false, shopArm = null;
-  const SELLV = { berries: 2, meat: 3, fish: 4, cooked: 6, water: 2, wood: 2, stone: 2, vine: 2, flint: 3, iron: 6, crystal: 14, hide: 8, hpot: 18, mpot: 18, bomb: 14, crbomb: 40, frost: 20, smoke: 16, stew: 16, torch: 7, rope: 6, pickaxe: 24, ladder: 12, raft: 18, ckey: 40, pack: 40, bridge: 10, key: 60 };
+  const SELLV = { berries: 2, meat: 3, fish: 4, cooked: 6, water: 2, wood: 2, stone: 2, vine: 2, flint: 3, iron: 6, crystal: 14, beacon: 60, hide: 8, hpot: 18, mpot: 18, bomb: 14, crbomb: 40, frost: 20, smoke: 16, stew: 16, torch: 7, rope: 6, pickaxe: 24, ladder: 12, raft: 18, ckey: 40, pack: 40, bridge: 10, key: 60 };
   const sellPrice = (e) => typeof e === 'string' ? (SELLV[e] || 3) : 6 + Math.round(gpower(e) * 3.5);
   const shopTile = () => { const t = curTile(); return t && t.type === 'merchant' ? t : null; };
   function openShop() { if (TEST || B || S.state !== 'play' || !shopTile()) return; shopOpen = true; shopArm = null; $('shop').style.display = 'flex'; renderShop(); }
@@ -5179,7 +5188,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   let warpMode = null, warpScale = null;
   const shrineList = () => { if (S.cave) return []; const out = []; for (const t of tiles.values()) if (t.type === 'shrine' && !(t.q === guy.q && t.r === guy.r)) out.push({ t, d: hd(t.q - guy.q, t.r - guy.r) }); return out.sort((a, b) => a.d - b.d); };
   function startWarp() {
-    if (TEST || B || warpMode || !atShrine() || !unlocked('warp')) return; const list = shrineList(); if (!list.length || !countOf('crystal', true)) return;
+    if (TEST || B || warpMode || !atShrine() || !unlocked('warp')) return; const list = shrineList(); if (!list.length || !countOf('beacon', true)) return;
     let x0 = guy.x, x1 = guy.x, y0 = guy.y, y1 = guy.y;
     for (const e of list) { const w = toWorld(e.t.q, e.t.r); x0 = Math.min(x0, w.x); x1 = Math.max(x1, w.x); y0 = Math.min(y0, w.y); y1 = Math.max(y1, w.y); }
     const bw = x1 - x0 + 90, bh = y1 - y0 + 110;
@@ -5191,12 +5200,12 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   function closeAllForWarp() { if (stashOpen) closeStash(); if (craftOpen) closeCraft(); if (skillsOpen) closeSkills(); if (bookOpen) closeBook(); if (menuOpen) closeMenu(); }
   function endWarp() { if (!warpMode) return; warpMode = null; warpScale = null; pan.x = pan.y = 0; $('warpBar').style.display = 'none'; document.body.classList.remove('warping'); resize(); hudDirty = true; }
   function warpTo(t) {
-    if (!warpMode || B || S.cave || !atShrine() || !countOf('crystal', true) || !tiles.has(key(t.q, t.r))) return endWarp();
-    const k = P.bag.indexOf('crystal'); if (k >= 0) P.bag.splice(k, 1); else S.stash.splice(S.stash.indexOf('crystal'), 1);
+    if (!warpMode || B || S.cave || !atShrine() || !countOf('beacon', true) || !tiles.has(key(t.q, t.r))) return endWarp();
+    const k = P.bag.indexOf('beacon'); if (k >= 0) P.bag.splice(k, 1); else S.stash.splice(S.stash.indexOf('beacon'), 1);
     endWarp(); guy.q = t.q; guy.r = t.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null; sel = null; aim = null;
     if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
     flash = 1; cam.x = w.x; cam.y = w.y - 6; burst(w.x, w.y - 14, 18, ['#5ad0ff', '#ffffff', '#c8b8ff'], 30, -30, 20);
-    toast('The crystal shatters and carries you to the shrine'); onEnter(t); hudDirty = true; later(saveNow, 50);
+    toast('The beacon shatters and carries you to the shrine'); onEnter(t); hudDirty = true; later(saveNow, 50);
   }
   if (!TEST) $('warpCancel').onclick = (e) => { e.stopPropagation(); endWarp(); };
   function openSkills() { if (TEST) return; skillsOpen = true; bagSel = null; aim = null; $('skills').style.display = 'flex'; renderSkills(); }
