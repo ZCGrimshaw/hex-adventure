@@ -1,1 +1,4 @@
-{ "build": 80, "notes": "New spell: Recall (unlocks at tile 150) returns you to your last shrine. Casting damage magic at a monster next to you makes it hit back. Shrine bricks now count for every shrine. Crafting at a shrine uses your bag and stash together." }
+{
+  "build": 81,
+  "notes": "Hall of Greats now tracks steps walked and ranks by a Score: more tiles, gems, gold, bosses and levels raise it, every step walked lowers it."
+}

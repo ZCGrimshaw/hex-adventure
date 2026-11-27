@@ -742,12 +742,12 @@
     const cls = !!(j && j.classic), fade = !cls && j && j.players >= 20, tgl = fade ? '' : '<div style="text-align:center;margin-top:6px"><button class="act" data-hallclassic="1">' + (cls ? 'Back to the current Hall' : 'Show the Classic Hall (5-skull runs)') + '</button></div>';
     const ban = cls ? '<div class="note" style="color:#ffd23a">&#9733; Classic Hall: runs played with the old rules, five skulls from the start.</div>' : '';
     if (!j || !j.top || !j.top.length) return ban + '<div class="note">' + (cls ? 'No Classic runs here.' : 'No one has entered the Hall of Greats yet. Be the first!') + '</div>' + tgl;
-    let h = ban + '<table class="hog"><tr><th></th><th>Name</th><th class="n">Tiles</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
-    for (const e of j.top) h += '<tr class="' + (e.me ? 'me ' : '') + (e.rank <= 3 ? 'top' + e.rank : '') + '"><td class="rk">#' + e.rank + '</td><td>' + esc(e.name) + (cls ? ' <span style="color:#ffd23a" title="Played with five skulls">&#9733;</span>' : '') + '</td><td class="n">' + e.tiles + '</td><td class="n">' + e.level + '</td><td class="n">' + e.gold + '</td><td class="n">' + e.gems + '</td></tr>';
+    let h = ban + '<table class="hog"><tr><th></th><th>Name</th><th class="n">Score</th><th class="n">Tiles</th><th class="n">Steps</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
+    for (const e of j.top) h += '<tr class="' + (e.me ? 'me ' : '') + (e.rank <= 3 ? 'top' + e.rank : '') + '"><td class="rk">#' + e.rank + '</td><td>' + esc(e.name) + (cls ? ' <span style="color:#ffd23a" title="Played with five skulls">&#9733;</span>' : '') + '</td><td class="n"><b>' + (e.score === undefined ? '-' : e.score) + '</b></td><td class="n">' + e.tiles + '</td><td class="n">' + (e.steps == null ? '-' : e.steps) + '</td><td class="n">' + e.level + '</td><td class="n">' + e.gold + '</td><td class="n">' + e.gems + '</td></tr>';
     h += '</table>';
     const total = j.runs !== undefined ? j.runs : j.players, who = j.runs !== undefined ? ' run' + (total === 1 ? '' : 's') + ' by ' + j.players + ' explorer' + (j.players === 1 ? '' : 's') : ' explorer' + (total === 1 ? '' : 's');
-    if (j.mine && !j.top.some(e => e.me)) h += '<div class="note">Your best: #' + j.mine.rank + ' of ' + total + ' (' + j.mine.tiles + ' tiles, level ' + j.mine.level + ')</div>';
-    else h += '<div class="note">' + total + who + ' from players everywhere. Ranked by tiles, then level, then gold. ' + (hallMine ? 'Every one of your runs is shown; other players show their best.' : 'Each player\'s best run is shown.') + ' Your runs are highlighted.</div>';
+    if (j.mine && !j.top.some(e => e.me)) h += '<div class="note">Your best: #' + j.mine.rank + ' of ' + total + (j.mine.score !== undefined ? ' - score ' + j.mine.score : '') + ' (' + j.mine.tiles + ' tiles, level ' + j.mine.level + ')</div>';
+    else h += '<div class="note">' + total + who + ' from players everywhere. Ranked by score: 10 per tile explored, 40 per gem, 100 per boss, 20 per level, 1 per 10 gold, minus 1 per step walked. ' + (hallMine ? 'Every one of your runs is shown; other players show their best.' : 'Each player\'s best run is shown.') + ' Your runs are highlighted.</div>';
     h += tgl + '<div style="text-align:center;margin-top:6px"><button class="act" data-hallmine="1">' + (hallMine ? 'Show only my best run' : 'Show all my runs') + '</button></div>';
     return h;
   }
@@ -756,7 +756,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 80;
+  const BUILD = 81;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2123,7 +2123,7 @@
       '<details class="rd"><summary>Run details</summary><table>' + details + '</table></details>' +
       '<div style="text-align:center;margin-top:8px"><button class="act" id="again">Play again</button></div>';
     hallClassic = S.rules !== 2;
-    const runId = S.runId, snap = { tiles: S.revealed, level: P.lvl, gold: P.gold, gems: S.gems, bosses: stats.bosses };
+    const runId = S.runId, snap = { tiles: S.revealed, level: P.lvl, gold: P.gold, gems: S.gems, bosses: stats.bosses, steps: stats.steps | 0 };
     let sent = false;
     const submit = () => {
       if (sent) return; const nm = ($('hgName').value || '').trim();
@@ -2131,7 +2131,7 @@
       pname = nm; try { localStorage.setItem('hexworld_name', nm); } catch (e) {}
       if (!runId) { $('hgMsg').textContent = 'This run was not registered online (you were offline when it began), so it cannot enter the Hall.'; loadBoard($('hgBoard')); return; }
       sent = true; $('hgMsg').textContent = 'Sending your run...';
-      rpc('hx_finish', { p_run: runId, p_player: PID, p_name: nm, p_tiles: snap.tiles, p_level: snap.level, p_gold: snap.gold, p_gems: snap.gems, p_bosses: snap.bosses, p_status: status || 'dead' })
+      rpc('hx_finish', { p_run: runId, p_player: PID, p_name: nm, p_tiles: snap.tiles, p_level: snap.level, p_gold: snap.gold, p_gems: snap.gems, p_bosses: snap.bosses, p_status: status || 'dead', p_steps: snap.steps })
         .then(j => { if (j && j.ok) { $('hgMsg').textContent = 'Your run is in the Hall of Greats, ' + nm + '!'; $('hgRow').style.display = 'none'; } else { $('hgMsg').textContent = 'The Hall refused this run: ' + ((j && j.error) || 'unknown error'); } loadBoard($('hgBoard')); })
         .catch(() => { sent = false; $('hgMsg').textContent = 'Could not reach the Hall of Greats. Check your connection and try again.'; });
     };
