@@ -1,4 +1,4 @@
 {
-  "build": 81,
-  "notes": "Hall of Greats now tracks steps walked and ranks by a Score: more tiles, gems, gold, bosses and levels raise it, every step walked lowers it."
+  "build": 82,
+  "notes": "Vines are back (they hang from the frame again). Gear compare now labels reforge slots clearly, and the old Classic Hall is hidden."
 }

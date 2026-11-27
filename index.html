@@ -739,7 +739,7 @@
   let hallMine = false; try { hallMine = localStorage.getItem('hexhallmine') === '1'; } catch (e) {}
   function setHallMine(v) { hallMine = v; try { localStorage.setItem('hexhallmine', v ? '1' : '0'); } catch (e) {} }
   function hallTable(j) {
-    const cls = !!(j && j.classic), fade = !cls && j && j.players >= 20, tgl = fade ? '' : '<div style="text-align:center;margin-top:6px"><button class="act" data-hallclassic="1">' + (cls ? 'Back to the current Hall' : 'Show the Classic Hall (5-skull runs)') + '</button></div>';
+    const cls = !!(j && j.classic), fade = !cls && j && j.players >= 20, tgl = '' && '<div style="text-align:center;margin-top:6px"><button class="act" data-hallclassic="1">' + (cls ? 'Back to the current Hall' : 'Show the Classic Hall (5-skull runs)') + '</button></div>';
     const ban = cls ? '<div class="note" style="color:#ffd23a">&#9733; Classic Hall: runs played with the old rules, five skulls from the start.</div>' : '';
     if (!j || !j.top || !j.top.length) return ban + '<div class="note">' + (cls ? 'No Classic runs here.' : 'No one has entered the Hall of Greats yet. Be the first!') + '</div>' + tgl;
     let h = ban + '<table class="hog"><tr><th></th><th>Name</th><th class="n">Score</th><th class="n">Tiles</th><th class="n">Steps</th><th class="n">Level</th><th class="n">Gold</th><th class="n">Gems</th></tr>';
@@ -756,7 +756,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 81;
+  const BUILD = 82;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2122,7 +2122,7 @@
       '<div class="namerow" id="hgRow"><input id="hgName" maxlength="14" placeholder="Your name" value="' + esc(pname) + '"><button class="act buy" id="hgSubmit">Enter the Hall</button></div><div id="hgMsg" class="note"></div><div id="hgBoard"></div>') +
       '<details class="rd"><summary>Run details</summary><table>' + details + '</table></details>' +
       '<div style="text-align:center;margin-top:8px"><button class="act" id="again">Play again</button></div>';
-    hallClassic = S.rules !== 2;
+    hallClassic = false;
     const runId = S.runId, snap = { tiles: S.revealed, level: P.lvl, gold: P.gold, gems: S.gems, bosses: stats.bosses, steps: stats.steps | 0 };
     let sent = false;
     const submit = () => {
@@ -3050,7 +3050,7 @@
     else if (k === 'ropeup') { const pr = [{ x: 0, y: -22, rx: 1, ry: 22, rz: 1, c: ROPER, tex: .6 }, { x: 0, y: -1.2, rx: 5.4, ry: 1.6, rz: 3, c: ['#0a0806', '#1c140c', '#3a2a1a'] }]; for (let i = 0; i < 8; i++) pr.push({ x: 0, y: -4 - i * 5, rx: 2.8, ry: .6, rz: .9, z: .6, c: WOODR }); s = { w: 14, h: 48, ax: 7, ay: 45, f: .85, prims: pr }; }
     else if (k === 'spikes') { const pr = []; for (let i = 0; i < 6; i++) pr.push({ x: -12 + i * 5, y: -3.5 - (i % 2), rx: 1.5, ry: 4.4, rz: 1.5, z: (i % 2) * 2, p: 1.4, c: STEELR, spec: .8 }); s = { w: 34, h: 16, ax: 17, ay: 11, f: .85, prims: pr }; }
     else if ((m = /^vines(\d+)$/.exec(k))) { const u = +m[1], pr = [{ x: -9, y: -11, rx: 1.2, ry: 11.5, rz: 1.2, p: 3, c: BARKR, tex: .3 }, { x: 9, y: -11, rx: 1.2, ry: 11.5, rz: 1.2, p: 3, c: BARKR, tex: .3 }, { x: 0, y: -22.5, rx: 11.5, ry: 1.5, rz: 1.6, p: 3, c: WOODR, tex: .3 }];
-      for (let q = 0; q < u * 3; q++) { const x = -7 + q * 3, L = 9 + Math.floor(hash(q * 3) * 10); pr.push({ x, y: -20.5 + L / 2 - L, rx: .8, ry: L / 2, rz: .8, z: (q % 2) * 1.2, c: LEAFR, tex: .4 }, { x: x + (q % 2 ? 1.4 : -1.4), y: -20.5 + L / 2 - L + 1, rx: 1.5, ry: 1, rz: .8, z: 1, c: LEAFR }); } s = { w: 30, h: 30, ax: 15, ay: 26, f: .85, prims: pr }; }
+      for (let q = 0; q < u * 3; q++) { const n = u * 3, x = n > 1 ? -8 + q * 16 / (n - 1) : 0, L = 9 + Math.floor(hash(q * 3) * 10); pr.push({ x, y: -21 + L / 2, rx: .9, ry: L / 2, rz: .9, z: (q % 2) * 1.2, p: 3, c: LEAFR, tex: .4 }, { x: x + (q % 2 ? 1.6 : -1.6), y: -21 + L - 2, rx: 1.8, ry: 1.2, rz: .9, z: 1, p: 3, c: LEAFR }); } s = { w: 30, h: 30, ax: 15, ay: 26, f: .85, prims: pr }; }
     else if (k === 'cavedone') s = rockSpec(5, ['#14110f', '#2a2622', '#4a423a', '#6a6058', '#8a8078']);
     else if (k === 'rubble') s = rockSpec(4, ['#2a1c16', '#463026', '#6a4a38', '#8e6a50', '#b08e70']);
     OBJS[k] = s; return s;
@@ -3880,7 +3880,7 @@
     inspList = list && list.length ? list : [g]; inspIdx = Math.max(0, inspList.indexOf(g));
     const ct = curTile(), inTile = ct && ct.loot.indexOf(g) >= 0, inBag = P.bag.indexOf(g) >= 0, canEq = (inTile || inBag) && !B && S.state === 'play' && !guy.mv;
     const old = P.eq[slotFor(g)], sl = SLOTS.find(x => x[0] === slotFor(g))[1];
-    const pips = (it) => { const cap = Math.max(upCap(), it.up || 0), u = it.up || 0; let s = ''; for (let i = 0; i < cap; i++) s += '<i class="pip' + (i < u ? ' on' : '') + '"></i>'; return '<div class="pips" title="Reforged ' + u + ' of ' + cap + ' times">' + s + '</div><div class="dim" style="font-size:11px">' + (u >= cap ? 'Fully reforged' : 'Reforged ' + u + ' / ' + cap + ' · ' + (cap - u) + ' left') + '</div>'; };
+    const pips = (it) => { const cap = Math.max(upCap(), it.up || 0), u = it.up || 0; let s = ''; for (let i = 0; i < cap; i++) s += '<i class="pip' + (i < u ? ' on' : '') + '"></i>'; return '<div class="dim" style="font-size:10px;letter-spacing:1px;margin-top:4px">REFORGE SLOTS</div><div class="pips" title="Each gold diamond is a reforge already done; empty ones can still be reforged at a smith">' + s + '</div><div class="dim" style="font-size:11px">' + (u >= cap ? 'All ' + cap + ' used: fully reforged' : u + ' of ' + cap + ' used (gold = done) · ' + (cap - u) + ' more at a smith') + '</div>'; };
     const card = (it, title) => '<div class="gc' + (it ? '' : ' none') + '"><div class="gt">' + title + '</div>' +
       (it ? '<div class="gi" style="border-color:' + it.col + ';box-shadow:0 0 12px ' + it.col + '66"><img src="' + gearIconURL(it) + '"></div><div class="gn" style="color:' + it.col + '">' + it.name + '</div><div class="dim" style="font-size:12px">' + (it.tier != null && typeof TIERN !== 'undefined' && TIERN[it.tier] ? TIERN[it.tier] + ' ' : '') + (SLOTS.find(x => x[0] === slotFor(it)) || ['', ''])[1] + '</div>' + pips(it) + '<div class="gd">' + gearDesc(it) + '</div>'
         : '<div class="dim" style="height:150px;display:flex;align-items:center;justify-content:center">Nothing equipped</div>') + '</div>';
