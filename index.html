@@ -741,7 +741,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 73;
+  const BUILD = 74;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2693,7 +2693,7 @@
     }
     if (t.grave) ob('grave', 18, 18, 9, 15, fGrave, cx + 12, cy + 2);
     else if (t.loot.length && ty !== 'chest') {
-      const it = t.loot[0], c = it.kind === 'gear' ? gearIconC(it) : ICONC[it.id], y = cy - 10 - elev(t) + Math.round(Math.sin(gt * 4 + t.q) * 1.5);
+      const it = t.loot[0], c = it.kind === 'gear' ? gearMiniC(it) : ICONC[it.id], y = cy - 10 - elev(t) + Math.round(Math.sin(gt * 4 + t.q) * 1.5);
       if (c) { G.drawImage(c, Math.round(cx + 6), y); if (Math.floor(gt * 3 + t.r) % 3 === 0) px(cx + 17, y - 1, 1, 1, '#ffffff'); }
       if (t.loot.length > 1) text('+' + (t.loot.length - 1), cx + 22, y + 9, '#ffe14a');
     }
@@ -3330,6 +3330,12 @@
   function gearIconC(g) {
     const k = g.slot + (g.tier || 0) + g.col + (g.gem || ''); if (GIC[k]) return GIC[k].c;
     const c = gearArt(g); GIC[k] = { c, url: c.toDataURL() }; GURL.add(GIC[k].url); return c;
+  }
+  // small copy for drawing on the map (the full icon is 128px; step down by halves so it stays smooth)
+  function gearMiniC(g) {
+    const big = gearIconC(g), e = GIC[g.slot + (g.tier || 0) + g.col + (g.gem || '')]; if (e.mini) return e.mini;
+    let src = big, w = 64; while (w > 16) { const n = mkC(w / 2 * 1, w / 2 * 1), x = n.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w / 2, w / 2); src = n; w /= 2; }
+    const o = mkC(16, 16), y = o.getContext('2d'); y.imageSmoothingEnabled = true; y.imageSmoothingQuality = 'high'; y.drawImage(src, 0, 0, 16, 16); e.mini = o; return o;
   }
   const gearIconURL = (g) => { gearIconC(g); return GIC[g.slot + (g.tier || 0) + g.col + (g.gem || '')].url; };
   const entryURL = (e) => typeof e === 'string' ? ICONURL[e] : gearIconURL(e);
