@@ -752,7 +752,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 78;
+  const BUILD = 79;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -952,13 +952,13 @@
   function setShrineBrick(t) {
     if ((P.sbrick || 0) < 1) return toast('You need a shrine brick');
     P.sbrick--; t.sb = (t.sb || 0) + 1; hudDirty = true; const w = toWorld(t.q, t.r); burst(w.x, w.y - 14, 24, ['#e0c8ff', '#a98ae6', '#ffffff'], 50, -30, 12);
-    if (t.sb >= 3) { t.realm = true; t.visits = 0; flash = .6; toast('The shrine blazes with light... a HIGHER REALM has opened! Step through when you are ready.'); }
+    if (t.sb >= 3) { t.realm = true; t.visits = 0; flash = .6; toast('The shrine blazes with light... a HIGHER REALM has opened! It will never close: return whenever you like.'); }
     else toast('The shrine hums as the brick fuses into it (' + t.sb + ' / 3). ' + (3 - t.sb) + ' more to open a Higher Realm.');
   }
   function enterCave(t, realm) {
     S.caves = S.caves || {}; const k = key(t.q, t.r), old = S.caves[k]; let c;
     if (old) {
-      delete S.caves[k]; t.visits = Math.max(0, (t.visits || 1) - 1); c = old.c; c.saved = { tiles, mons }; c.braced = 0; S.cave = c; tiles = old.tiles; mons = old.mons; particles = [];
+      delete S.caves[k]; if (!old.c.realm) t.visits = Math.max(0, (t.visits || 1) - 1); c = old.c; c.saved = { tiles, mons }; c.braced = 0; S.cave = c; tiles = old.tiles; mons = old.mons; particles = [];
       for (const m of mons.values()) { const mw = toWorld(m.q, m.r); m.x = mw.x; m.y = mw.y; }
       toast('You climb back down into the ' + (c.realm ? 'realm' : 'cave') + ', just as you left it.');
     } else {
@@ -976,17 +976,17 @@
   }
   function exitCave(silent, collapse) {
     const c = S.cave; if (!c) return;
-    const caveTiles = tiles, caveMons = mons, keep = collapse ? 0 : keepVisits();
+    const caveTiles = tiles, caveMons = mons, keep = c.realm ? 1 : collapse ? 0 : keepVisits();
     tiles = c.saved.tiles; mons = c.saved.mons; particles = [];
     const ent = tiles.get(key(c.entrance.q, c.entrance.r)), ek = key(c.entrance.q, c.entrance.r); S.caves = S.caves || {};
-    if (ent && keep > 0) { delete c.saved; S.caves[ek] = { c, tiles: caveTiles, mons: caveMons }; ent.visits = keep; }
+    if (ent && keep > 0) { delete c.saved; S.caves[ek] = { c, tiles: caveTiles, mons: caveMons }; ent.visits = c.realm ? 0 : keep; }
     else { delete S.caves[ek]; if (ent) { ent.visits = 0; if (c.realm) { ent.realm = false; ent.sb = 0; } else ent.type = 'cavedone'; } }
     for (const h of c.petHomes) { const ht = tiles.get(key(h.q, h.r)); if (ht && ht.type === 'grass' && !monAt(h.q, h.r)) ht.type = 'bearfriend'; }
     S.cave = null;
     guy.q = c.entrance.q; guy.r = c.entrance.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null;
     if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
     cam.x = w.x; cam.y = w.y - 10; flash = .6; lockDirty = true;
-    if (!silent) toast(keep > 0 ? 'You climb back into the light. The ' + (c.realm ? 'gate' : 'cave') + ' stays open for ' + keep + ' more visit' + (keep === 1 ? '' : 's') + '.' : c.realm ? 'You step back to the shrine. The realm fades behind you.' : 'You climb back into the light. The cave rumbles and collapses behind you.');
+    if (!silent) toast(keep > 0 ? 'You climb back into the light. The ' + (c.realm ? 'gate' : 'cave') + ' stays open for ' + keep + ' more visit' + (keep === 1 ? '' : 's') + '.' : c.realm ? 'You step back to the shrine. The realm waits for your return.' : 'You climb back into the light. The cave rumbles and collapses behind you.');
     hudDirty = true;
   }
   function genCaveTile(q, r) {
@@ -1348,8 +1348,8 @@
     if (t.type === 'spring') { const dry = !!t.dry; A.push({ label: 'Drink from the spring', sub: dry ? 'run dry' : 'full health and magic, one use only', better: !dry && springHurt(), off: dry ? 'The spring has run dry' : !springHurt() && 'You are already at full strength', run() { drinkSpring(t); } }); }
     if (t.type === 'cavelit') A.push({ label: 'Enter the cave', sub: t.visits ? 'braced open: ' + t.visits + ' visit' + (t.visits === 1 ? '' : 's') + ' left' : 'a temporary underground world', hot: true, run() { enterCave(t); } });
     if (t.type === 'caveexit' && S.cave) { const kv = keepVisits(), rl = S.cave.realm;
-      A.push({ label: 'Brace with a brick', sub: (P.brick || 0) + ' in your pouch · +1 visit (now ' + kv + ')', off: !(P.brick) && 'You need a brick (they drop from blasted walls)', run() { braceCave(); } });
-      A.push({ label: rl ? 'Return to the shrine' : 'Leave the cave', sub: (S.cave.guard && S.cave.guard.hp > 0 && mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'the guardian still lurks! ' : '') + (kv ? 'stays open for ' + kv + ' more visit' + (kv === 1 ? '' : 's') : rl ? 'the realm fades behind you' : 'the cave collapses behind you'), hot: true, run() { exitCave(); } }); }
+      if (!rl) A.push({ label: 'Brace with a brick', sub: (P.brick || 0) + ' in your pouch · +1 visit (now ' + kv + ')', off: !(P.brick) && 'You need a brick (they drop from blasted walls)', run() { braceCave(); } });
+      A.push({ label: rl ? 'Return to the shrine' : 'Leave the cave', sub: (S.cave.guard && S.cave.guard.hp > 0 && mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'the guardian still lurks! ' : '') + (rl ? 'the realm waits for your return' : kv ? 'stays open for ' + kv + ' more visit' + (kv === 1 ? '' : 's') : 'the cave collapses behind you'), hot: true, run() { exitCave(); } }); }
     if (t.type === 'shrooms') { const f = () => { if (--t.units <= 0) t.type = 'cfloor'; }; gather('Pick glowcap', t.units + ' left', 'shroom', f); eat('Eat a glowcap here', 'shroom', f); }
     if (t.type === 'pool') { if (t.fish > 0) { gather('Catch blind fish', t.fish + ' left', 'fish', () => { t.fish--; }); eat('Catch and eat a fish', 'fish', () => { t.fish--; }); } water(); }
     if (t.type === 'gemvein') {
@@ -1365,7 +1365,7 @@
         if (pet) pet.hp = pet.max; if (P.hire) P.hire.hp = P.hire.max; if (P.charm) P.charm.hp = P.charm.max; hudDirty = true; later(spawnMist, 1200); } }); }
     if (t.type === 'shrine') { const others = shrineList().length, cr = countOf('crystal', true); A.push({ label: 'Warp to another shrine', sub: others + ' known shrine' + (others === 1 ? '' : 's') + ' · costs 1 crystal (' + cr + ' held)', off: !unlocked('warp') ? lockMsg('warp') : !others ? 'No other shrine found yet' : !cr && 'You need a crystal', run() { startWarp(); } }); }
     if (t.type === 'shrine') A.push({ label: 'Spellbook', sub: activeSpells().length + ' / ' + spellSlots() + ' spells carried', run() { openBook(); } });
-    if (t.type === 'shrine') { if (t.realm) A.push({ label: 'Enter the Higher Realm', sub: t.visits ? 'held open: ' + t.visits + ' visit' + (t.visits === 1 ? '' : 's') + ' left' : 'a pale realm above the shrine', hot: true, run() { enterCave(t, true); } });
+    if (t.type === 'shrine') { if (t.realm) A.push({ label: 'Enter the Higher Realm', sub: S.caves && S.caves[key(t.q, t.r)] ? 'explored ' + S.caves[key(t.q, t.r)].c.n + ' / ' + S.caves[key(t.q, t.r)].c.max + ' · always open' : 'a pale realm above the shrine', hot: true, run() { enterCave(t, true); } });
       else A.push({ label: 'Set a shrine brick', sub: (t.sb || 0) + ' / 3 set · ' + (P.sbrick || 0) + ' in your pouch', off: !(P.sbrick) && 'You need a shrine brick (1 in 7 bricks from blasted walls)', run() { setShrineBrick(t); } }); }
     if (t.type === 'shrine') A.push({ label: 'Store all items', sub: (P.bag.filter((e, i) => typeof e === 'string' && !heldAt(i)).length) + ' to store' + (heldCount() ? ' · held items stay' : ''), off: !P.bag.some((e, i) => typeof e === 'string' && !heldAt(i)) && 'Nothing to store', run() { storeAll(); } });
     if (t.type === 'shrine') A.push({ label: 'Open stash', sub: stashUsed() + ' / ' + S.stashCap + ' slots', hot: true, run() { openStash(); } });
@@ -2725,7 +2725,7 @@
         if (ty === 'lair' && S.boss) { for (let i = 0; i < 3; i++) { const lit = i < S.boss.have || S.boss.open, x = cx - 8 + i * 8, y = cy - 40; px(x - 1, y - 1, 4, 4, '#000'); px(x, y, 2, 2, lit ? (Math.sin(gt * 5 + i) > 0 ? '#e8a8ff' : '#b060ff') : '#3a2a4a'); if (lit) glow(x + 1, y + 1, 8, '#c878ff', .5); }
           if (S.boss.open) glow(cx, cy - 10, 30, '#ff3a2a', .5 + .2 * Math.sin(gt * 3)); else glow(cx, cy - 12, 22, '#8a3aff', .25); } } break;
       case 'sigil': ob('sigil', 40, 22, 20, 14, fSigil, cx, cy + 2); { const c = t.lit ? (Math.sin(gt * 4) > 0 ? '#e8a8ff' : '#b060ff') : '#3a3046';
-        px(cx - 3, cy - 3, 7, 1, c); px(cx, cy - 5, 1, 5, c); if (t.lit) { glow(cx, cy - 3, 22, '#c878ff', .45); if (rnd() < .2) particles.push({ x: toWorld(t.q, t.r).x + (rnd() - .5) * 10, y: toWorld(t.q, t.r).y - 4, vx: 0, vy: -14, life: 1, max: 1, col: '#e8a8ff', s: 1, g: 0 }); } } break;
+        px(cx - 3, cy - 6, 7, 1, c); px(cx, cy - 8, 1, 5, c); if (t.lit) { glow(cx, cy - 6, 22, '#c878ff', .45); if (rnd() < .2) particles.push({ x: toWorld(t.q, t.r).x + (rnd() - .5) * 10, y: toWorld(t.q, t.r).y - 4, vx: 0, vy: -14, life: 1, max: 1, col: '#e8a8ff', s: 1, g: 0 }); } } break;
       case 'campfire': { const left = (t.fireUntil || 0) - gt, k = clamp(left / 40, .35, 1), fx0 = cx + 12, fy0 = cy + 3;   // set to one side so it shows while you stand on the hex
         for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; ell(fx0 + Math.cos(a) * 8, fy0 + Math.sin(a) * 3.5, 2, 1, i % 2 ? '#6a6e78' : '#9a9ea8'); }
         px(fx0 - 7, fy0 - 2, 14, 2, '#6b4423'); px(fx0 - 6, fy0 - 3, 12, 1, '#8e5c32'); px(fx0 - 3, fy0 - 4, 6, 3, '#5a3818');
@@ -2953,6 +2953,7 @@
   // ---- shape library ----
   const LEAFR = ['#071d22', '#0c3430', '#145238', '#227440', '#3e9a40', '#7cc44a', '#c0e870'], PINER = ['#061620', '#0a2a30', '#104438', '#1a6044', '#2e8250', '#5aac62', '#9ad078'];
   const BARKR = ['#1a0e16', '#33191e', '#552c26', '#784430', '#9c6440'], STONER = ['#15162a', '#26283e', '#3e4258', '#5c6178', '#848aa0', '#b4b9ca'];
+  const BONER = ['#5a5044', '#8a8070', '#b8b0a0', '#e0d8c8', '#fff8ec'], ROPER = ['#4a3418', '#7a5a30', '#b08a50', '#d8b878', '#f0d8a0'];
   const GOLDR = ['#341a06', '#70400e', '#b87414', '#eeb42c', '#ffe88a'], WOODR = ['#200e0a', '#421e12', '#6a3a1c', '#925a28', '#bc823c'], STEELR = ['#22263a', '#4c5470', '#8a94b2', '#d4dcf0', '#ffffff'];
   const CRYR = ['#0e1a48', '#183e8a', '#2478c8', '#4ac4f8', '#a4ecff', '#ffffff'], DARKR = ['#000000', '#050408', '#0a0810', '#100c18', '#16121e', '#1c1626'];
   const SKINC = '#e89a74';
@@ -3014,6 +3015,24 @@
     else if (k === 'stump') s = { w: 16, h: 14, ax: 8, ay: 11, f: .8, prims: [{ x: 0, y: -3, rx: 4, ry: 3.5, rz: 4, p: 3, c: BARKR, tex: .4 }, { x: 0, y: -6.3, rx: 3.8, ry: 1.2, rz: 3.6, z: .4, p: 2, c: ['#4a2a18', '#7a4a28', '#b07a48', '#d8a870'] }] };
     else if ((m = /^cliff(\d)$/.exec(k))) s = { w: 44, h: 70, ax: 22, ay: 48, f: .95, top: .7, prims: [{ x: 0, y: -6, rx: 16, ry: 22, rz: 13, p: 3.2, c: STONER, tex: .35, tf: .25, fa: 6 }, { x: +m[1] % 2 ? 6 : -6, y: 6, rx: 7, ry: 8, rz: 6, z: 7, p: 2.4, c: STONER, tex: .3 },
       { x: 0, y: -27.5, rx: 16.6, ry: 4.6, rz: 13.6, p: 3.2, c: LEAFR, tex: .4, tf: .5 }] };
+    else if (k === 'sigil') { const pr = []; for (let i = 0; i < 6; i++) { const a = i / 6 * 6.283 + .3, x = Math.cos(a) * 16, gy = Math.sin(a) * 5, z = Math.sin(a) * 4;
+        pr.push({ x, y: -3 + gy - 8, rx: 2.3, ry: 8, rz: 2.3, z, p: 4, c: STONER, tex: .3, tf: .4 }, { x, y: -3 + gy - 16.6, rx: 3.1, ry: 1.1, rz: 3.1, z, p: 4, c: STONER }); }
+      pr.push({ x: 0, y: -4, rx: 9.5, ry: 3.2, rz: 8, p: 3, c: STONER, tex: .3 }, { x: 0, y: -7.8, rx: 7.2, ry: 1.3, rz: 6.2, p: 4, c: ['#2a3038', '#4a525b', '#6c7782', '#9ea9b3', '#c8d0d8'], spec: .3 }); s = { w: 48, h: 34, ax: 24, ay: 28, f: .9, prims: pr }; }
+    else if (k === 'bones') s = { w: 34, h: 18, ax: 17, ay: 12, f: .85, prims: [{ x: -2, y: -4.5, rx: 3.8, ry: 3.2, rz: 3.4, c: BONER }, { x: -2, y: -1.6, rx: 2.8, ry: 1.1, rz: 2.8, c: BONER }, { x: -3.8, y: -5, rx: .95, ry: 1.1, rz: .6, z: 3.2, c: '#120c0c' }, { x: -.2, y: -5, rx: .95, ry: 1.1, rz: .6, z: 3.2, c: '#120c0c' },
+      { x: -10, y: -1.6, rx: 5.4, ry: .9, rz: .9, a: .1, c: BONER }, { x: -15, y: -1, rx: 1.4, ry: 1.4, rz: 1.4, c: BONER }, { x: 10, y: -1.2, rx: 5.4, ry: .9, rz: .9, a: -.14, c: BONER }, { x: 15.4, y: -2, rx: 1.4, ry: 1.4, rz: 1.4, c: BONER }, { x: 10, y: -5.6, rx: 3.6, ry: 2.2, rz: 3, p: 2.4, c: WOODR, tex: .3 }] };
+    else if (k === 'den') { const pr = [{ x: 0, y: -1.2, rx: 18, ry: 3.6, rz: 7, p: 2, c: ['#050304', '#120c08', '#2a1c12'] }]; for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283; pr.push({ x: Math.cos(a) * 15.5, y: -3 + Math.sin(a) * 3.4, rx: 1.1, ry: 4, rz: 1.1, z: Math.sin(a) * 4, a: -Math.cos(a) * .35, c: BONER }); }
+      pr.push({ x: 10, y: -5.6, rx: 3.4, ry: 2.8, rz: 3, z: 3, c: BONER }, { x: 9, y: -6, rx: .8, ry: 1, rz: .6, z: 6, c: '#120c0c' }, { x: 11.5, y: -6, rx: .8, ry: 1, rz: .6, z: 6, c: '#120c0c' }); s = { w: 44, h: 22, ax: 22, ay: 12, f: .85, prims: pr }; }
+    else if (k === 'bridge') { const pr = []; for (let x = -22; x <= 22; x += 3) pr.push({ x, y: -4, rx: 1.35, ry: 4.2, rz: .9, p: 4, c: WOODR, tex: .3 });
+      pr.push({ x: 0, y: -9.5, rx: 23.5, ry: .7, rz: .7, c: ['#4a3a28', '#8a7450', '#c8a878', '#e8d0a0'] }, { x: 0, y: -.4, rx: 23.5, ry: .7, rz: .7, z: 2, c: ['#4a3a28', '#8a7450', '#c8a878', '#e8d0a0'] }, { x: -25, y: -8, rx: 1.4, ry: 8.5, rz: 1.4, p: 3, c: BARKR, tex: .3 }, { x: 25, y: -8, rx: 1.4, ry: 8.5, rz: 1.4, p: 3, c: BARKR, tex: .3 }); s = { w: 58, h: 24, ax: 29, ay: 14, f: .9, prims: pr }; }
+    else if (k === 'ladder') { const pr = [{ x: -5, y: -10, rx: 1.1, ry: 12.5, rz: 1.1, a: .1, p: 3, c: WOODR, tex: .3 }, { x: 5, y: -10, rx: 1.1, ry: 12.5, rz: 1.1, a: -.1, p: 3, c: WOODR, tex: .3 }]; for (let i = 0; i < 6; i++) pr.push({ x: .3 * i - .6, y: -2.5 - i * 3.9, rx: 5, ry: .65, rz: .8, z: 1.2, p: 3, c: WOODR }); s = { w: 22, h: 30, ax: 11, ay: 24, f: .85, prims: pr }; }
+    else if ((m = /^lily(\d+)$/.exec(k))) { const pr = []; [[-12, -2], [10, 3], [-3, 6]].forEach(([x, y], i) => { pr.push({ x, y: y - 1.6, rx: 4.6, ry: 1.5, rz: 4.6, p: 2, c: LEAFR, tex: .3 }); if (i === 0) pr.push({ x, y: y - 4, rx: 1.6, ry: 1.6, rz: 1.6, z: 1, c: '#ffb0d0', spec: .5 }, { x, y: y - 4.8, rx: .7, ry: .7, rz: .7, z: 2, c: '#ffffff' }); }); s = { w: 40, h: 22, ax: 20, ay: 12, f: .9, prims: pr }; }
+    else if (k === 'raft') { const pr = []; for (let i = 0; i < 4; i++) pr.push({ x: 0, y: -2 - i * 2, rx: 11, ry: 1, rz: 3.4, z: i * .2, p: 4, c: WOODR, tex: .3 });
+      pr.push({ x: -7, y: -5, rx: .9, ry: 5, rz: .9, z: 3, c: ['#6a5a3a', '#e0c890'] }, { x: 7, y: -5, rx: .9, ry: 5, rz: .9, z: 3, c: ['#6a5a3a', '#e0c890'] }, { x: 0, y: -14, rx: .9, ry: 7, rz: .9, c: WOODR }, { x: 4, y: -15, rx: 3.6, ry: 3.2, rz: .6, z: 1, p: 2, c: ['#6a6458', '#b8b0a0', '#f4eee0'] }); s = { w: 30, h: 28, ax: 15, ay: 22, f: .9, prims: pr }; }
+    else if (k === 'ropeup') { const pr = [{ x: 0, y: -22, rx: 1, ry: 22, rz: 1, c: ROPER, tex: .6 }, { x: 0, y: -1.2, rx: 5.4, ry: 1.6, rz: 3, c: ['#0a0806', '#1c140c', '#3a2a1a'] }]; for (let i = 0; i < 8; i++) pr.push({ x: 0, y: -4 - i * 5, rx: 2.8, ry: .6, rz: .9, z: .6, c: WOODR }); s = { w: 14, h: 48, ax: 7, ay: 45, f: .85, prims: pr }; }
+    else if (k === 'spikes') { const pr = []; for (let i = 0; i < 6; i++) pr.push({ x: -12 + i * 5, y: -3.5 - (i % 2), rx: 1.5, ry: 4.4, rz: 1.5, z: (i % 2) * 2, p: 1.4, c: STEELR, spec: .8 }); s = { w: 34, h: 16, ax: 17, ay: 11, f: .85, prims: pr }; }
+    else if ((m = /^vines(\d+)$/.exec(k))) { const u = +m[1], pr = [{ x: -9, y: -11, rx: 1.2, ry: 11.5, rz: 1.2, p: 3, c: BARKR, tex: .3 }, { x: 9, y: -11, rx: 1.2, ry: 11.5, rz: 1.2, p: 3, c: BARKR, tex: .3 }, { x: 0, y: -22.5, rx: 11.5, ry: 1.5, rz: 1.6, p: 3, c: WOODR, tex: .3 }];
+      for (let q = 0; q < u * 3; q++) { const x = -7 + q * 3, L = 9 + Math.floor(hash(q * 3) * 10); pr.push({ x, y: -20.5 + L / 2 - L, rx: .8, ry: L / 2, rz: .8, z: (q % 2) * 1.2, c: LEAFR, tex: .4 }, { x: x + (q % 2 ? 1.4 : -1.4), y: -20.5 + L / 2 - L + 1, rx: 1.5, ry: 1, rz: .8, z: 1, c: LEAFR }); } s = { w: 30, h: 30, ax: 15, ay: 26, f: .85, prims: pr }; }
+    else if (k === 'cavedone') s = rockSpec(5, ['#14110f', '#2a2622', '#4a423a', '#6a6058', '#8a8078']);
     else if (k === 'rubble') s = rockSpec(4, ['#2a1c16', '#463026', '#6a4a38', '#8e6a50', '#b08e70']);
     OBJS[k] = s; return s;
   }
@@ -3654,6 +3673,9 @@
     if (S.state === 'play' && !guy.mv && !caveFull() && !warpMode) for (const [dq, dr] of DIRS) { const q = guy.q + dq, r = guy.r + dr; if (isCand(q, r)) list.push({ cand: 1, q, r, y: toWorld(q, r).y - .1 }); else if (sealedBy(q, r)) list.push({ cand: 1, sealed: 1, q, r, y: toWorld(q, r).y - .1 }); }
     if (hoverC && !caveFull() && !list.some(i => i.cand && i.q === hoverC.q && i.r === hoverC.r)) list.push({ cand: 1, q: hoverC.q, r: hoverC.r, y: toWorld(hoverC.q, hoverC.r).y - .1 });
     list.sort((a, b) => a.y - b.y);
+    // the ground is the back plane: every flat tile is drawn first, so creatures and props can never slip behind a neighbouring hex
+    for (const it of list) { if (!it.t || elev(it.t)) continue; try { const t = it.t, k = Math.min(1, (gt - t.born) / .45), drop = k < 1 ? -Math.round(30 * (1 - k) * (1 - k)) : 0;
+      if (k < 1) G.globalAlpha = k; drawTile(t, it.w.x + ox, it.w.y + oy + bobA(t) + drop); G.globalAlpha = 1; } catch (er) { drawErr(er); } }
     for (const it of list) { try {   // one bad drawing never stops the rest of the world from drawing
       if (it.guy) drawGuy(ox, oy);
       else if (it.pet) drawPet(ox, oy);
@@ -3668,7 +3690,7 @@
       else { const t = it.t, k = Math.min(1, (gt - t.born) / .45), drop = k < 1 ? -Math.round(30 * (1 - k) * (1 - k)) : 0;
         const cx = it.w.x + ox, cy = it.w.y + oy + bobA(t) + drop;
         if (k < 1) G.globalAlpha = k;
-        drawTile(t, cx, cy);
+        if (elev(t)) drawTile(t, cx, cy);
         drawObject(t, cx, cy);
         G.globalAlpha = 1;
         if (hoverT === t) outlineHex(cx, cy - elev(t), monAt(t.q, t.r) ? '#ff5a4a' : blocked(t) ? '#ff9a3a' : '#ffe14a');
@@ -3877,7 +3899,7 @@
       (pet ? '<div class="call bear"><b>' + petName().replace(/^./, c => c.toUpperCase()) + ' buddy</b> · HP ' + pet.hp + ' / ' + pet.max + '</div>' : '') +
       (P.charm ? '<div class="call bear"><b>\u2665 ' + P.charm.name + '</b> (charmed) · HP ' + P.charm.hp + ' / ' + P.charm.max + '<br>' + Math.max(0, P.charm.left) + ' tiles of charm left</div>' : '') +
       (P.hire ? '<div class="call bear"><b>' + P.hire.name + '</b> (' + P.hire.cls + ') · HP ' + P.hire.hp + ' / ' + P.hire.max + '<br>' + Math.max(0, P.hire.left) + ' tiles of wages left</div>' : '');
-    if (S.cave) st += '<div class="call cave"><b>' + (S.cave.realm ? 'IN THE HIGHER REALM' : 'IN A CAVE') + '</b> · ' + S.cave.n + ' / ' + S.cave.max + ' explored<br>' + (S.cave.guard ? (mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'Guardian: ' + S.cave.guard.name + ' (Lv ' + S.cave.guard.L + ')' : 'Guardian defeated!') : 'The guardian hides deeper...') + '<br>' + (S.cave.realm ? 'Return through the gate to leave' : 'Climb the rope to leave') + (keepVisits() ? ' · held open: ' + keepVisits() + ' visit' + (keepVisits() === 1 ? '' : 's') : '') + '</div>';
+    if (S.cave) st += '<div class="call cave"><b>' + (S.cave.realm ? 'IN THE HIGHER REALM' : 'IN A CAVE') + '</b> · ' + S.cave.n + ' / ' + S.cave.max + ' explored<br>' + (S.cave.guard ? (mons.has(key(S.cave.guard.q, S.cave.guard.r)) ? 'Guardian: ' + S.cave.guard.name + ' (Lv ' + S.cave.guard.L + ')' : 'Guardian defeated!') : 'The guardian hides deeper...') + '<br>' + (S.cave.realm ? 'Return through the gate to leave' : 'Climb the rope to leave') + (!S.cave.realm && keepVisits() ? ' · held open: ' + keepVisits() + ' visit' + (keepVisits() === 1 ? '' : 's') : '') + '</div>';
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
     else st += '<div class="call dim">Next boss around tile ' + S.nextBoss + '</div>';
     if (P.sp) st += '<div class="call" style="border-color:#ffd23a"><b style="color:#ffe14a">' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend!</b> Press K</div>';
