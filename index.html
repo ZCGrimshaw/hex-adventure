@@ -20,7 +20,7 @@
   .panel { background:linear-gradient(#17271dee,#0b140fee); border:2px solid #45624f; border-radius:7px; box-shadow:inset 0 0 0 1px #000, 0 3px 0 #0008; padding:8px 10px; }
   img.sm { image-rendering:auto !important; }
   img.px, .slot img, #gear img, .rec img { image-rendering:pixelated; image-rendering:crisp-edges; }
-  #stat { left:10px; top:10px; width:200px; }
+  #stat { left:10px; top:10px; width:200px; max-height:calc(100vh - 20px); overflow-y:auto; scrollbar-width:thin; }
   .skulls { display:flex; gap:3px; margin-bottom:4px; } .skulls img { width:22px; height:22px; }
   .bar { position:relative; height:16px; background:#050805; border:2px solid #000; box-shadow:0 0 0 1px #3a4a3f; margin-top:5px; overflow:hidden; border-radius:3px; }
   .bar i { position:absolute; left:0; top:0; bottom:0; transition:width .25s; }
@@ -49,7 +49,7 @@
   #bagbar { display:flex; flex-direction:column; gap:5px; align-items:center; pointer-events:auto; padding:6px 8px; }
   #spellrow, #itemrow { display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap; }
   #bookBtn { padding:4px 8px; font-size:11px; }
-  #bag { display:flex; gap:5px; }
+  #bag { display:flex; gap:5px; flex-wrap:wrap; justify-content:center; max-width:96vw; }
   .slot { position:relative; width:50px; height:52px; box-sizing:border-box; border:2px solid #4f6d5a; background:linear-gradient(#1c2c22,#0d1610); border-radius:6px;
           display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px; font-size:9px; cursor:pointer; text-align:center; line-height:1.05; font-weight:700; overflow:hidden; }
   .slot.w2 { width:105px; flex-direction:row; gap:4px; }
@@ -141,7 +141,7 @@
   .kv { display:grid; grid-template-columns:auto 1fr auto 1fr; gap:3px 8px; margin-top:8px; font-size:12px; align-items:baseline; } .kv span { color:#8fa898; font-weight:400; } .kv b { font-size:15px; }
   .call { margin-top:8px; padding:6px 8px; border-radius:5px; font-size:12px; font-weight:400; line-height:1.45; background:#0007; border-left:3px solid #45624f; } .call b { font-weight:700; }
   .call.boss { border-color:#ff6a4a; } .call.boss b { color:#ff9a7a; } .call.cave { border-color:#5ab0ff; } .call.cave b { color:#9fd8ff; } .call.bear { border-color:#c98a52; } .call .mist { color:#c8a0ff; } .dim { opacity:.75; }
-  #side { right:10px; top:10px; width:250px; display:flex; flex-direction:column; gap:8px; }
+  #side { right:10px; top:10px; width:250px; display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 20px); overflow-y:auto; scrollbar-width:thin; }
   #side #gear { width:auto; } #side > .panel { box-sizing:border-box; }
   #gear h4 { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; margin:0 0 6px; } #gear h4 span { color:#d8e8dc; font-size:12px; letter-spacing:0; }
   .ggrid { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
@@ -168,6 +168,8 @@
   #htip { position:fixed; z-index:99; pointer-events:none; display:none; max-width:320px; background:#0a120def; border:1px solid #7dff8f; border-radius:6px; padding:7px 11px; font-size:13px; line-height:1.4; color:#e8f6ec; box-shadow:0 4px 14px #000a; }
   #toast { font-size:18px; } #tip { font-size:14px; }
   .act { font-size:14px; }
+  /* short desktop windows: tighter slots so a full bag plus spells and buttons keep the map visible */
+  @media (min-width:761px) and (max-height:760px) { .slot { width:44px; height:46px; } .slot.w2 { width:93px; } .slot img { width:28px; height:28px; } #bottom { gap:5px; bottom:4px; } #bagbar { padding:4px 6px; } .act { padding:5px 10px; } #zoomBtns { bottom:150px; } }
   @media (max-width:760px) {
     #side { width:auto; max-width:46vw; } #mapbox { display:none; } #spells .spell { width:44px; height:46px; }
     #gear { width:auto; max-width:42vw; padding:6px 8px; } #gear:not(.min) { max-width:none; width:200px; } #stat { width:150px; padding:6px 8px; } #stat .small { font-size:10px; }
@@ -759,7 +761,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 88;
+  const BUILD = 89;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -988,7 +990,7 @@
     const ent = tiles.get(key(c.entrance.q, c.entrance.r)), ek = c.realm ? 'realm' : key(c.entrance.q, c.entrance.r); S.caves = S.caves || {};
     if (ent && keep > 0) { delete c.saved; S.caves[ek] = { c, tiles: caveTiles, mons: caveMons }; ent.visits = c.realm ? 0 : keep; }
     else { delete S.caves[ek]; if (ent) { ent.visits = 0; if (!c.realm) ent.type = 'cavedone'; } }
-    for (const h of c.petHomes) { const ht = tiles.get(key(h.q, h.r)); if (ht && ht.type === 'grass' && !monAt(h.q, h.r)) ht.type = 'bearfriend'; ht.animal = h.kind || 'bear'; ht.petLvl = h.lvl || 1; }
+    for (const h of c.petHomes) { const ht = stayTile(h.q, h.r); if (ht) { ht.type = 'bearfriend'; ht.animal = h.kind || 'bear'; ht.petLvl = h.lvl || 1; } }
     S.cave = null;
     guy.q = c.entrance.q; guy.r = c.entrance.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null;
     if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
@@ -1445,13 +1447,20 @@
     if (!pet) return;
     const h0 = pet.hunger || 0; pet.hunger = h0 + (pet.hp < pet.max * .5 ? 1.5 : 1);
     if (h0 < 55 && pet.hunger >= 55) toast('Your ' + petName() + ' looks hungry. Feed it fish, meat or berries from your bag (use the item).');
-    else if (h0 < 80 && pet.hunger >= 80) toast('Your ' + petName() + ' is starving and may wander off soon!');
-    if (pet.hunger > 90 && rnd() < Math.min(1, (pet.hunger - 90) / 120)) { toast('Your ' + petName() + ' wandered off and did not come back.'); pet = null; hudDirty = true; }
+    else if (h0 < 80 && pet.hunger >= 80) toast('Your ' + petName() + ' is starving and will stop following soon!');
+    if (pet.hunger > 90 && rnd() < Math.min(1, (pet.hunger - 90) / 120)) { const nm = petName(); petHome(); if (!pet) toast('Your ' + nm + ' is too hungry to follow and stays behind. Bring it food to win it back!'); }
   }
+  // the nearest open grass hex to (q, r), where a hungry animal can wait to be fed
+  function stayTile(q, r) {
+    const ok = (t) => t && t.type === 'grass' && !monAt(t.q, t.r) && !(t.loot && t.loot.length);
+    for (let d = 0; d <= 3; d++) for (let dq = -d; dq <= d; dq++) for (let dr = -d; dr <= d; dr++) { if (Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr)) !== d) continue; const t = tiles.get(key(q + dq, r + dr)); if (ok(t)) return t; }
+    return null;
+  }
+  // a too-hungry animal stops following and waits where it is; feeding it wins it back, with its kind and level
   function petHome() {
-    if (S.cave) { S.cave.petHomes.push({ q: pet.home.q, r: pet.home.r, kind: petKind(), lvl: pet.lvl || 1 }); pet = null; hudDirty = true; return; }
-    const h = tiles.get(key(pet.home.q, pet.home.r));
-    if (h && h.type === 'grass' && !monAt(h.q, h.r)) { h.type = 'bearfriend'; h.animal = petKind(); h.petLvl = pet.lvl || 1; }
+    if (S.cave) { const e = S.cave.entrance; S.cave.petHomes.push({ q: e.q, r: e.r, kind: petKind(), lvl: pet.lvl || 1 }); pet = null; hudDirty = true; return; }
+    const h = stayTile(pet.q, pet.r); if (!h) return; // nowhere to wait: it keeps following
+    h.type = 'bearfriend'; h.animal = petKind(); h.petLvl = pet.lvl || 1;
     pet = null; hudDirty = true;
   }
   const petAtk = () => Math.round((4 + S.revealed / 12) * ANIMALS[petKind()].atk * (1 + .6 * ((pet && pet.lvl || 1) - 1)));
@@ -1991,7 +2000,7 @@
       case 'freeze': hitPlayer(.6, 'blasts you with frost'); if (P.hp > 0) hitPlayer(.6, 'strikes while you are frozen'); break;
       case 'double': hitPlayer(.75); if (P.hp > 0) hitPlayer(.75, 'strikes again'); break;
       default:
-        if (pet && rnd() < .25) { const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your ' + petName() + ' for ' + d + '.'); if (pet.hp <= 0) { blog('Your ' + petName() + ' is badly hurt and limps home to its den.'); petHome(); } }
+        if (pet && rnd() < .25) { const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your ' + petName() + ' for ' + d + '.'); if (pet.hp <= 0) { blog('Your ' + petName() + ' has fallen in battle.'); toast('Your ' + petName() + ' has fallen.'); pet = null; hudDirty = true; } }
         else hitPlayer(1);
     }
   }
@@ -2006,7 +2015,7 @@
       else if (m.trait === 'charge' && rnd() < .3) { B.charging = true; blog(m.name + ' is winding up a huge attack!'); fx('!', 'm', '#ff4a4a'); }
       else if (pet && rnd() < .3) {
         const d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()))); pet.hp = Math.max(0, pet.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' mauls your ' + petName() + ' for ' + d + '.');
-        if (pet.hp <= 0) { blog('Your ' + petName() + ' is badly hurt and limps home to its den.'); petHome(); }
+        if (pet.hp <= 0) { blog('Your ' + petName() + ' has fallen in battle.'); toast('Your ' + petName() + ' has fallen.'); pet = null; hudDirty = true; }
       }
       else if (P.charm && rnd() < .2) {
         const cc = P.charm, d = Math.max(1, Math.round(m.atk * (.85 + .3 * rnd()) * (1 - Math.min(.5, cc.def * .04)))); cc.hp = Math.max(0, cc.hp - d); B.lunge = { who: 'm', t: gt }; blog(m.name + ' hits ' + cc.name + ' for ' + d + '.');
@@ -2073,15 +2082,14 @@
   function die(m) {
     S.deaths++;
     let t = curTile(), inCave = !!S.cave;
-    if (inCave) { const ent = S.cave.entrance; if (pet) petHome(); exitCave(true, true); t = tiles.get(key(ent.q, ent.r)); }
+    if (inCave) { const ent = S.cave.entrance; exitCave(true, true); t = tiles.get(key(ent.q, ent.r)); }
     for (const s in P.eq) if (P.eq[s]) { t.loot.push(P.eq[s]); P.eq[s] = null; }
     P.bag.forEach(e => t.loot.push(toLoot(e))); P.bag = [];
     if (t.loot.length) t.grave = true;
     const half = Math.floor(P.xp / 2); P.xp -= half;
     if (inCave) { t.graveXp = (t.graveXp || 0) + half; t.grave = true; } else { m.heldXp += half; m.hp = Math.min(m.maxHp, m.hp + Math.round((m.maxHp - m.hp) * .5)); }
-    if (pet) petHome();
     if (S.deaths >= skullCap()) return gameOver();
-    guy.q = S.cp.q; guy.r = S.cp.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null;
+    guy.q = S.cp.q; guy.r = S.cp.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.prev = null; if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; pet.hp = pet.max; }
     P.hp = maxHP(); P.mp = maxMP(); flash = 1; cam.x = w.x; cam.y = w.y - 6; later(saveNow, 50);
     if (!TEST && pname.length < 2) later(() => askName(() => {}), 1200);
     toast((inCave ? 'The cave collapsed. Your gear and lost XP wait at its entrance. ' : 'You wake at the checkpoint. Your gear lies where you fell, your stash is safe. ') + '(' + (skullCap() - S.deaths) + ' lives left)'); hudDirty = true;
