@@ -1,4 +1,4 @@
 {
-  "build": 89,
-  "notes": "Animal companions now stay with you through caves and even if you die. They only leave if they fall in battle or get too hungry, and feeding a hungry one wins it back. A full bag now wraps to extra rows and panels scroll on small windows."
+  "build": 90,
+  "notes": "New Log button under Menu: a history of every message from your run."
 }

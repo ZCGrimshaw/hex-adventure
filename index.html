@@ -705,7 +705,7 @@
     if (d.P.book === undefined) d.P.book = Object.keys(d.P.spells || {}).length > 0;
     if (d.P.sk === undefined) d.P.sk = {};
     if (!d.P.loadout) d.P.loadout = SP_ORDER.filter(k => d.P.spells && d.P.spells[k]).slice(0, 3);
-    d.S = Object.assign({ miles: 0, stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, caves: {}, firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
+    d.S = Object.assign({ miles: 0, stash: [], stashCap: 40, due: [], nextBoss: 50, boss: null, bossN: 0, gems: 0, cave: null, caves: {}, log: [], firstCave: 25, lastCave: -99, caveSeen: false, keyDue: false, gemsSpent: 0, freeRests: 0, nextHire: (d.S && d.S.revealed || 0) + 25, nextSmith: (d.S && d.S.revealed || 0) + 45, nextShop: (d.S && d.S.revealed || 0) + 20, vaultAt: 0, lastShrine: (d.S && d.S.revealed || 0) - 10 }, d.S);
     if (d.S.sb === undefined) { d.S.sb = 0; d.S.realm = false; if (d.tiles instanceof Map) for (const t of d.tiles.values()) if (t.type === 'shrine') { if (t.sb > d.S.sb) d.S.sb = t.sb; if (t.realm) d.S.realm = true; }   // build 78 kept brick counts per shrine; now they are shared
       if (d.S.caves) for (const k in d.S.caves) if (d.S.caves[k] && d.S.caves[k].c && d.S.caves[k].c.realm && k !== 'realm') { d.S.caves.realm = d.S.caves[k]; delete d.S.caves[k]; d.S.realm = true; } }
     if (d.S.rules === undefined) d.S.rules = 1;   // runs begun before the 3-skull rules keep their 5 skulls
@@ -761,7 +761,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 89;
+  const BUILD = 90;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -2282,7 +2282,7 @@
     for (let i = 0; i < n; i++) { const a = rnd() * 6.283, s = (.3 + rnd() * .7) * sp;
       particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s * .6 + (up || 0), life: .4 + rnd() * .6, max: 1, col: pick(cols), s: rnd() < .3 ? 2 : 1, g: g === undefined ? 160 : g }); }
   }
-  function toast(msg) { if (TEST) return; $('toastText').textContent = msg; $('toast').style.opacity = 1; toastT = 3.2; }
+  function toast(msg) { try { const L = S.log || (S.log = []); if (!L.length || L[L.length - 1].m !== msg) { L.push({ s: stats.steps | 0, t: S.revealed | 0, m: String(msg).slice(0, 300) }); if (L.length > 400) L.splice(0, L.length - 400); } } catch (_) {} if (TEST) return; $('toastText').textContent = msg; $('toast').style.opacity = 1; toastT = 3.2; }
 
   // =====================================================
   //  DRAWING PRIMITIVES (all draw into G)
@@ -3942,7 +3942,7 @@
     else if (S.boss) st += '<div class="call boss"><b>BOSS: ' + S.boss.m.name + '</b><br>' + gateText() + '<br><span class="mist">' + (mistCap() ? 'The mist has closed in. Beat the boss to explore on' : 'Mist closes in at tile ' + S.boss.cap) + '</span></div>';
     else st += '<div class="call dim">Next boss around tile ' + S.nextBoss + '</div>';
     if (P.sp) st += '<div class="call" style="border-color:#ffd23a"><b style="color:#ffe14a">' + P.sp + ' skill point' + (P.sp > 1 ? 's' : '') + ' to spend!</b> Press K</div>';
-    st += '<button class="hallbtn" id="hallBtn">&#127942; Hall of Greats</button><button class="hallbtn" id="menuBtn" style="margin-top:4px;border-color:#5ab0ff;color:#bfe0ff">&#9776; Menu</button>';
+    st += '<button class="hallbtn" id="hallBtn">&#127942; Hall of Greats</button><button class="hallbtn" id="menuBtn" style="margin-top:4px;border-color:#5ab0ff;color:#bfe0ff">&#9776; Menu</button><button class="hallbtn" id="logBtn" style="margin-top:4px;border-color:#9a8aff;color:#d8d0ff">&#128220; Log</button>';
     $('stat').innerHTML = st;
     $('skillBtn').classList.toggle('glow', P.sp > 0);
     { const hpp = Math.max(0, Math.min(100, Math.round(100 * P.hp / mh))); $('bStat').style.setProperty('--hp', hpp); $('bStatIn').textContent = P.lvl; $('bStat').classList.toggle('sp', P.sp > 0);
@@ -4002,7 +4002,7 @@
     $('bag').onclick = (e) => { if (B || S.state !== 'play') return; const s = e.target.closest('[data-i]'); if (!s || guy.mv) return; aim = null; bagSel = bagSel === +s.dataset.i ? null : +s.dataset.i; hudDirty = true; };
     $('craftBtn').onclick = () => { if (B || S.state !== 'play') return; openCraft(); };
     $('bStat').onclick = () => setPV('stat'); $('bGear').onclick = () => setPV('gear'); $('bMap').onclick = () => setPV('map');
-    $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); else if (e.target.closest('#menuBtn')) openMenu('pause');
+    $('stat').onclick = (e) => { if (e.target.closest('#hallBtn') && !B && S.state === 'play') openHall(); else if (e.target.closest('#menuBtn')) openMenu('pause'); else if (e.target.closest('#logBtn')) openMenu('log');
       else if (!isPhone() && e.target.closest('.hdr, .bar, .kv, .minline')) { $('stat').classList.toggle('min'); try { localStorage.setItem('hexstatmin', $('stat').classList.contains('min') ? '1' : '0'); } catch (_) {} } };
     $('skillBtn').onclick = () => { if (B || S.state !== 'play') return; openSkills(); };
     $('bookBtn').onclick = () => { if (B || S.state !== 'play') return; openBook(); };
@@ -4910,9 +4910,13 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
   }
   function renderMenu() {
     if (TEST || !menuOpen) return;
-    const tabs = [['pause', 'Menu'], ['guide', 'How to play'], ['music', 'Music'], ['export', 'Export game info']];
+    const tabs = [['pause', 'Menu'], ['guide', 'How to play'], ['music', 'Music'], ['log', 'Log'], ['export', 'Export game info']];
     let h = '<h2>MENU</h2><div class="note" style="text-align:center;margin:-6px 0 8px">The game is paused while this is open</div><div style="display:flex;gap:6px;justify-content:center;margin-bottom:8px">' + tabs.map(([k, l]) => '<button class="act' + (menuTab === k ? ' hot' : '') + '" data-mt="' + k + '">' + l + '</button>').join('') + '</div>';
-    if (menuTab === 'guide') h += '<div style="text-align:left;font-size:14px">' + guideHTML() + '</div>';
+    if (menuTab === 'log') {
+      const L = (S.log || []).slice().reverse();
+      h += '<div class="note" style="margin:0 0 8px;text-align:left">Everything the game has told you this run, newest first. Steps is how far you had walked at the time.</div><div style="text-align:left;font-size:13px;max-height:52vh;overflow-y:auto;border:1px solid #2b3d31;border-radius:6px;background:#06100a">' +
+        (L.length ? L.map(e => '<div style="display:flex;gap:10px;padding:5px 8px;border-bottom:1px solid #1c2a21"><span style="flex:none;width:76px;color:#8fa898;font-size:11px;padding-top:1px">step ' + e.s + '</span><span style="flex:1">' + esc(e.m) + '</span></div>').join('') : '<div style="padding:10px;color:#8fa898">Nothing yet. Messages will collect here as you play.</div>') + '</div>';
+    } else if (menuTab === 'guide') h += '<div style="text-align:left;font-size:14px">' + guideHTML() + '</div>';
     else if (menuTab === 'pause') {
       h += '<div style="display:flex;flex-direction:column;gap:8px;align-items:center;margin:6px 0 4px">' +
         '<button class="act hot" id="mnClose2" style="min-width:260px">Resume<small>or press Esc</small></button>' +
