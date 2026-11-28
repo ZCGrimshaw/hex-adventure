@@ -759,7 +759,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 87;
+  const BUILD = 88;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -988,7 +988,7 @@
     const ent = tiles.get(key(c.entrance.q, c.entrance.r)), ek = c.realm ? 'realm' : key(c.entrance.q, c.entrance.r); S.caves = S.caves || {};
     if (ent && keep > 0) { delete c.saved; S.caves[ek] = { c, tiles: caveTiles, mons: caveMons }; ent.visits = c.realm ? 0 : keep; }
     else { delete S.caves[ek]; if (ent) { ent.visits = 0; if (!c.realm) ent.type = 'cavedone'; } }
-    for (const h of c.petHomes) { const ht = tiles.get(key(h.q, h.r)); if (ht && ht.type === 'grass' && !monAt(h.q, h.r)) ht.type = 'bearfriend'; }
+    for (const h of c.petHomes) { const ht = tiles.get(key(h.q, h.r)); if (ht && ht.type === 'grass' && !monAt(h.q, h.r)) ht.type = 'bearfriend'; ht.animal = h.kind || 'bear'; ht.petLvl = h.lvl || 1; }
     S.cave = null;
     guy.q = c.entrance.q; guy.r = c.entrance.r; const w = toWorld(guy.q, guy.r); guy.x = w.x; guy.y = w.y; guy.mv = null; guy.target = null; guy.pending = null; guy.prev = null;
     if (pet) { pet.q = guy.q; pet.r = guy.r; pet.x = w.x - 10; pet.y = w.y; }
@@ -1424,7 +1424,7 @@
   const petMaxHp = (kind, lvl) => Math.round((25 + S.revealed / 3) * ANIMALS[kind].hp * (1 + .75 * (lvl - 1)));
   function befriend(t, id, msg) {
     const p = toWorld(t.q, t.r), kind = animalOf(t); burst(p.x, p.y - 10, 14, ['#ff6a8a', '#ffffff'], 30, -40, 20);
-    const roll = rnd() < (id === 'cooked' ? .75 : .4);
+    const roll = t.petLvl ? true : rnd() < (id === 'cooked' ? .75 : .4);
     if (pet && petKind() !== kind) { t.type = 'bearfriend'; toast(msg + ' Your ' + petName() + ' bares its teeth: it only teams up with its own kind.'); }
     else if (pet && (pet.lvl || 1) >= 3) { t.type = 'bearfriend'; toast(msg + ' Your ' + petName() + ' is already as mighty as it gets.'); }
     else if (pet && !unlocked('merge')) { t.type = 'bearfriend'; toast(msg + ' It would join your ' + petName() + ', but animal bonds ' + lockMsg('merge').toLowerCase() + '.'); }
@@ -1434,9 +1434,9 @@
       toast(msg + ' The two join together into a ' + petName() + '!');
     } else if (roll) {
       t.type = 'grass'; t.den = true;
-      const mx = petMaxHp(kind, 1);
-      pet = { q: t.q, r: t.r, x: p.x, y: p.y, home: { q: t.q, r: t.r }, hp: mx, max: mx, face: -1, kind, lvl: 1, hunger: 0 };
-      toast(msg + ' It decides to follow you and fight by your side!');
+      const lv = t.petLvl || 1, mx = petMaxHp(kind, lv); delete t.petLvl;
+      pet = { q: t.q, r: t.r, x: p.x, y: p.y, home: { q: t.q, r: t.r }, hp: mx, max: mx, face: -1, kind, lvl: lv, hunger: 0 };
+      toast(msg + (lv > 1 ? ' It remembers you and happily rejoins!' : ' It decides to follow you and fight by your side!'));
     } else { t.type = 'bearfriend'; toast(msg + ' It seems happy to stay here.'); }
     hudDirty = true;
   }
@@ -1449,9 +1449,9 @@
     if (pet.hunger > 90 && rnd() < Math.min(1, (pet.hunger - 90) / 120)) { toast('Your ' + petName() + ' wandered off and did not come back.'); pet = null; hudDirty = true; }
   }
   function petHome() {
-    if (S.cave) { S.cave.petHomes.push(pet.home); pet = null; hudDirty = true; return; }
+    if (S.cave) { S.cave.petHomes.push({ q: pet.home.q, r: pet.home.r, kind: petKind(), lvl: pet.lvl || 1 }); pet = null; hudDirty = true; return; }
     const h = tiles.get(key(pet.home.q, pet.home.r));
-    if (h && h.type === 'grass' && !monAt(h.q, h.r)) h.type = 'bearfriend';
+    if (h && h.type === 'grass' && !monAt(h.q, h.r)) { h.type = 'bearfriend'; h.animal = petKind(); h.petLvl = pet.lvl || 1; }
     pet = null; hudDirty = true;
   }
   const petAtk = () => Math.round((4 + S.revealed / 12) * ANIMALS[petKind()].atk * (1 + .6 * ((pet && pet.lvl || 1) - 1)));
