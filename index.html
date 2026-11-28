@@ -234,7 +234,7 @@
 <div id="toast" class="ui"><span id="toastText"></span></div>
 <div id="bottom" class="ui">
   <div id="actions"></div>
-  <div id="bagbar" class="panel"><div id="spellrow"><div id="spells"></div><button class="btn" id="bookBtn">SPELLBOOK<small style="display:block;font-size:9px;font-weight:400" id="bookSub"></small></button></div><div id="itemrow"><div id="bag"></div><button class="btn alt" id="craftBtn">CRAFT<small style="display:block;font-size:9px;font-weight:400">key C</small></button><button class="btn" id="skillBtn">SKILLS<small style="display:block;font-size:9px;font-weight:400">key K</small></button></div></div>
+  <div id="bagbar" class="panel"><div id="spellrow"><div id="spells"></div><button class="btn" id="bookBtn">SPELLBOOK<small style="display:block;font-size:9px;font-weight:400" id="bookSub"></small></button><button class="btn" id="stashBtn" style="display:none">STASH<small style="display:block;font-size:9px;font-weight:400">take items &middot; key T</small></button></div><div id="itemrow"><div id="bag"></div><button class="btn alt" id="craftBtn">CRAFT<small style="display:block;font-size:9px;font-weight:400">key C</small></button><button class="btn" id="skillBtn">SKILLS<small style="display:block;font-size:9px;font-weight:400">key K</small></button></div></div>
 </div>
 <div id="battle" class="modal"><div class="bx">
   <canvas id="bc" width="160" height="84"></canvas>
@@ -568,7 +568,7 @@
   let glows = [], mistT = 0, darkC = null;
   let best = 0; try { best = parseInt(localStorage.getItem('hexworld_g3_best') || '0', 10) || 0; } catch (e) {}
   // features that open up as the player finds space gems during a run
-  const UNLOCKS = [['merge', 5, 'ANIMAL BONDS', 'Matching animals can now join into one stronger animal'], ['warp', 10, 'SHRINE WARPING', 'Spend a crystal at a shrine to warp to another shrine'], ['hire', 15, 'HIRED HELP', 'Travellers will now offer to work for wages'], ['smith', 20, 'BLACKSMITHS', 'Smiths will now appear to reforge your gear'], ['stashcraft', 25, 'REMOTE STASH', 'Craft with items in your stash from anywhere, not just at shrines']];
+  const UNLOCKS = [['merge', 5, 'ANIMAL BONDS', 'Matching animals can now join into one stronger animal'], ['warp', 10, 'SHRINE WARPING', 'Spend a crystal at a shrine to warp to another shrine'], ['hire', 15, 'HIRED HELP', 'Travellers will now offer to work for wages'], ['smith', 20, 'BLACKSMITHS', 'Smiths will now appear to reforge your gear'], ['stashcraft', 25, 'REMOTE STASH', 'Take items out of your stash and craft with them from anywhere (press T or use the Stash button)']];
   const unlockAt = (k) => UNLOCKS.find(u => u[0] === k)[1];
   const unlocked = (k) => S.gems >= unlockAt(k);
   const lockMsg = (k) => 'Unlocks at ' + unlockAt(k) + ' space gems (you have found ' + S.gems + ')';
@@ -761,7 +761,7 @@
     rpc('hx_board_v2', { p_player: PID, p_mine_all: hallMine, p_limit: 200, p_classic: hallClassic }).catch(() => rpc('hx_board_view', { p_player: PID, p_mine_all: hallMine, p_limit: 200 })).catch(() => rpc('hx_board', { p_player: PID })).then(j => { el.innerHTML = hallTable(j); const b = el.querySelector('[data-hallmine]'); if (b) b.onclick = () => { setHallMine(!hallMine); loadBoard(el); }; const c = el.querySelector('[data-hallclassic]'); if (c) c.onclick = () => { hallClassic = !hallClassic; loadBoard(el); }; }).catch(() => { el.innerHTML = '<div class="note">Could not reach the Hall of Greats. Check your connection.</div>'; });
   }
   // ---------- live updates: spot a new version, save, reload, carry on ----------
-  const BUILD = 90;
+  const BUILD = 91;
   let updT = 0, updShown = false, updBlock = false;
   // if a reload still serves the old file (a stale cache), do not trap the player in a loop: try once per build per tab
   const triedUpd = (n) => { try { return sessionStorage.getItem('hxUpd') === String(n); } catch (e) { return false; } };
@@ -1887,7 +1887,8 @@
     P.eq[slot] = null; S.stash.push(g); clampVitals(); hudDirty = true; renderStash();
   }
   const stashCost = () => 60 + 45 * Math.max(0, Math.round((S.stashCap - 25) / 5));   // +5 slots each time, a little dearer every time
-  function openStash() { if (!atShrine() || TEST) return; stashOpen = true; $('stash').style.display = 'flex'; renderStash(); }
+  const remoteStash = () => !atShrine();
+  function openStash() { if (TEST || (!atShrine() && !unlocked('stashcraft'))) return; stashOpen = true; $('stash').style.display = 'flex'; renderStash(); }
   function closeStash() { stashOpen = false; $('stash').style.display = 'none'; hudDirty = true; }
 
   // =====================================================
@@ -3952,6 +3953,7 @@
     $('gear').innerHTML = g + '</div><div id="gearInfo">' + gearInfoHTML() + '</div></div>';
     tidyLoadout();
     const known = activeSpells();
+    $('stashBtn').style.display = unlocked('stashcraft') && !atShrine() && !B ? '' : 'none';
     $('bookSub').textContent = known.length + ' / ' + spellSlots() + ' slots' + (P.spts ? ' \u00b7 ' + P.spts + ' pts' : '');
     $('spells').innerHTML = known.length ? known.map((k, i) => '<button class="spell' + (P.mp < SPELLS[k].cost ? ' off' : '') + (aim === k ? ' on' : '') + '" data-k="' + k + '" title="' + SPELLS[k].name + ' Lv ' + P.spells[k] + ' (' + SPELLS[k].cost + ' MP, key ' + (i + 1) + '): ' + SPHELP[k] + '"><u>' + (i + 1) + '</u>' + img(ICONURL['sp_' + k]) + '<i>' + SPELLS[k].cost + '</i></button>').join('') : '<div class="nosp">No spells yet.<br>Find rune stones</div>';
     let b = '', used = 0;
@@ -4006,6 +4008,7 @@
       else if (!isPhone() && e.target.closest('.hdr, .bar, .kv, .minline')) { $('stat').classList.toggle('min'); try { localStorage.setItem('hexstatmin', $('stat').classList.contains('min') ? '1' : '0'); } catch (_) {} } };
     $('skillBtn').onclick = () => { if (B || S.state !== 'play') return; openSkills(); };
     $('bookBtn').onclick = () => { if (B || S.state !== 'play') return; openBook(); };
+    $('stashBtn').onclick = () => { if (B || S.state !== 'play' || stashOpen) return; openStash(); };
     $('spells').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) selectSpell(b.dataset.k); };
     $('gear').onmouseover = (e) => { const c = e.target.closest('[data-g]'), v = c ? c.dataset.g : null; if (v !== gearHover) { gearHover = v; const gi = $('gearInfo'); if (gi) gi.innerHTML = gearInfoHTML(); } };
     $('gear').onclick = (e) => { if (!isPhone() && e.target.closest('#gearT')) $('gear').classList.toggle('min'); };
@@ -4018,8 +4021,8 @@
     if (got < n) toast(got ? 'Your bag only had room for ' + got : 'Not enough room in your bag'); hudDirty = true; return got; }
   function renderStash() {
     if (TEST || !stashOpen) return;
-    let h = '<h2>SHRINE STASH</h2><div class="note" style="margin:0 0 6px">The same stash waits at every shrine, and it is safe when you die. Click an item to move it. Click a stack to choose how many to take.</div>';
-    h += '<div class="sec"><span>EQUIPPED (click to store)</span></div><div class="rowf">';
+    const rm = remoteStash(); let h = '<h2>' + (rm ? 'REMOTE STASH' : 'SHRINE STASH') + '</h2>' + (rm ? '<div class="note" style="margin:0 0 6px;color:#ffe27a">You can take items out from here. To put things in, stand on a shrine.</div>' : '') + '<div class="note" style="margin:0 0 6px">The same stash waits at every shrine, and it is safe when you die. Click an item to move it. Click a stack to choose how many to take.</div>';
+    h += '<div class="sec"><span>EQUIPPED' + (rm ? '' : ' (click to store)') + '</span></div><div class="rowf">';
     for (const [s, label] of SLOTS) { const g = P.eq[s]; h += g ? slotHTML(g, 'data-un="' + s + '"').replace(' w2', '') : '<div class="slot empty" title="' + label + '"><span class="n" style="opacity:.4">' + label + '</span></div>'; }
     h += '</div><div class="sec"><span>BAG</span><span>' + bagUsed() + ' / ' + P.bagCap + '</span></div><div class="rowf">';
     let used = 0; P.bag.forEach((e, i) => { used += esize(e); h += slotHTML(e, 'data-b="' + i + '"'); }); for (let i = used; i < P.bagCap; i++) h += '<div class="slot empty"></div>';
@@ -4035,7 +4038,7 @@
         '<button class="act" data-sq="-1" style="padding:2px 10px">&minus;</button><b style="min-width:28px;text-align:center">' + stQty + '</b><button class="act" data-sq="1" style="padding:2px 10px">+</button>' +
         '<button class="act" data-sg="qty">Take ' + stQty + '</button><button class="act" data-sg="half">Half</button><button class="act" data-sg="all">All</button></div>'; }
     else if (stSel) stSel = null;
-    h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="act" id="stAll">Store all items<small>right-click a bag item to hold it</small></button><button class="act alt" id="stCraft">Craft</button>' + (S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +5<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
+    h += '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px">' + (rm ? '' : '<button class="act" id="stAll">Store all items<small>right-click a bag item to hold it</small></button>') + '<button class="act alt" id="stCraft">Craft</button>' + (!rm && S.stashCap < 80 ? '<button class="act buy" id="stExp">Expand stash +5<small>' + stashCost() + ' gold (you have ' + P.gold + ')</small></button>' : '') + '<button class="act" id="stClose">Close</button></div>';
     h += '<div class="note">Gear and big tools (pickaxe, ladder, raft) take 2 slots. Grow your bag with pack upgrades (3 hides + rope), merchants, and bosses. At a shrine, crafting can use materials from your stash.</div>';
     $('stashBox').innerHTML = h;
   }
@@ -4043,8 +4046,11 @@
   if (!TEST) $('stashBox').onclick = (e) => {
     const t = e.target;
     if (t.id === 'stClose') return closeStash();
+    if (remoteStash() && t.closest('#stExp')) { toast('Storing items needs a shrine'); return; }
     if (t.closest('#stExp')) { const c = stashCost(); if (P.gold < c) { toast('You need ' + c + ' gold'); return; } P.gold -= c; S.stashCap += 5; toast('Your stash grows to ' + S.stashCap + ' slots'); hudDirty = true; return renderStash(); }
     if (t.id === 'stCraft') { closeStash(); return openCraft(); }
+    const rmNo = remoteStash() && (t.id === 'stAll' || t.closest('#stExp') || t.closest('[data-se]') || t.closest('[data-un]') || t.closest('[data-b]'));
+    if (rmNo) { toast('Storing items needs a shrine'); return; }
     if (t.id === 'stAll') return storeAll();
     const se = t.closest('[data-se]'); if (se) return stashEquip(+se.dataset.se);
     const un = t.closest('[data-un]'); if (un) return unequipToStash(un.dataset.un);
@@ -5393,6 +5399,7 @@ return {SCENES,build,Seq,Chip,info,renderSong,encodeWav,encodeMp3,buildMidi,play
     if (e.key === '+' || e.key === '=') { zoomBy(1); return; } if (e.key === '-' || e.key === '_') { zoomBy(-1); return; } if (e.key === '0') { zoomReset(); return; }
     if (/^[1-6]$/.test(e.key)) { const known = activeSpells(); const k = known[+e.key - 1]; if (k) selectSpell(k); return; }
     if ((e.key === 'k' || e.key === 'K') && !B && S.state === 'play' && !stashOpen && !craftOpen && !bookOpen) { skillsOpen ? closeSkills() : openSkills(); return; }
+    if ((e.key === 't' || e.key === 'T') && !B && S.state === 'play' && !craftOpen && !skillsOpen && !bookOpen && !menuOpen && (stashOpen || unlocked('stashcraft') || atShrine())) { if (stashOpen) closeStash(); else openStash(); return; }
     if ((e.key === 'c' || e.key === 'C') && !B && S.state === 'play' && !stashOpen && !skillsOpen) { craftOpen ? closeCraft() : openCraft(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.key === 'Escape' && warpMode) { endWarp(); return; }

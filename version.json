@@ -1,4 +1,4 @@
 {
-  "build": 90,
-  "notes": "New Log button under Menu: a history of every message from your run."
+  "build": 91,
+  "notes": "Remote stash (25 gems) now adds a Stash button beside the Spellbook, and key T, to take items out of your stash from anywhere."
 }
